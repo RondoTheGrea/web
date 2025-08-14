@@ -1,0 +1,1294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Bread Sales Dashboard</title>
+
+  <!-- Appwrite SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/appwrite@13.0.1"></script>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
+
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background-color: #f9fafb; color: #1f2937; }
+    h1 { text-align: center; color: #265DAB; }
+    .tabs { display: flex; margin-top: 20px; border-bottom: 2px solid #e5e7eb; }
+    .tab-button {
+      padding: 10px 15px;
+      border: none;
+      background-color: transparent;
+      font-weight: bold;
+      cursor: pointer;
+      color: #6b7280;
+      border-bottom: 2px solid transparent;
+    }
+    .tab-button.active {
+      color: #265DAB;
+      border-bottom: 2px solid #265DAB;
+    }
+    .tab-content { display: none; margin-top: 20px; }
+    .tab-content.active { display: block; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; background: white; }
+    th, td { padding: 10px; border: 1px solid #ddd; text-align: left; font-size: 14px; }
+    th { background-color: #265DAB; color: white; }
+    .copy-buttons { text-align: right; margin-top: 10px; }
+    .copy-buttons button {
+      background-color: #059669;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .copy-buttons button:hover { opacity: 0.9; }
+    select, button { margin: 10px 0; padding: 6px; font-size: 14px; }
+    .chart-container {
+      background-color: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      margin: 20px 0;
+    }
+    .chart-box {
+      background-color: white;
+      padding: 15px;
+      border-radius: 8px;
+      height: 350px;
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 20px;
+    }
+    .chart-box h3 {
+      margin-top: 0;
+      color: #265DAB;
+      font-size: 16px;
+      margin-bottom: 10px;
+    }
+    .chart-box canvas {
+      flex: 1;
+    }
+    .chart-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-top: 10px;
+      justify-content: center;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+    }
+    .legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+    }
+    .chart-row {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 768px) {
+      .chart-row {
+        flex-direction: column;
+      }
+      
+      .chart-box {
+        height: 350px;
+      }
+    }
+    
+    /* Date and User selection panel styles */
+    .selection-panel {
+      background-color: white;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 15px;
+    }
+    
+    .selection-step {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    
+    .selection-step select, .selection-step button {
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    
+    .step-number {
+      display: inline-block;
+      width: 24px;
+      height: 24px;
+      background-color: #265DAB;
+      color: white;
+      border-radius: 50%;
+      text-align: center;
+      font-weight: bold;
+      line-height: 24px;
+      margin-right: 5px;
+    }
+    
+    /* Make selections more responsive */
+    @media (max-width: 768px) {
+      table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+      
+      .selection-panel {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      
+      .selection-step {
+        width: 100%;
+        margin-bottom: 10px;
+      }
+    }
+    
+    /* Expandable cell styles */
+    .expandable-cell {
+      position: relative;
+      min-width: 200px;
+    }
+    
+    .toggle-btn {
+      font-size: 12px;
+      padding: 2px 6px;
+      margin-left: 5px;
+      background-color: #265DAB;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    
+    .toggle-btn:hover {
+      opacity: 0.9;
+    }
+    
+    .preview-content {
+      display: inline-block;
+    }
+    
+    .full-content {
+      word-break: break-word;
+    }
+
+    /* Add these new styles */
+    select {
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    
+    /* Date dropdown specific styles */
+    #dateSelect {
+      max-height: 200px;
+      overflow-y: auto;
+      width: auto;
+      min-width: 120px;
+    }
+    
+    /* Table resizing styles */
+    table {
+      table-layout: fixed;
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+      background: white;
+    }
+    
+    th, td {
+      position: relative;
+      padding: 10px;
+      border: 1px solid #ddd;
+      text-align: left;
+      font-size: 14px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    th {
+      background-color: #265DAB;
+      color: white;
+      user-select: none;
+    }
+    
+    .resizer {
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 5px;
+      background: #265DAB;
+      cursor: col-resize;
+    }
+    
+    .resizer:hover {
+      background: #1e4b8f;
+    }
+    
+    /* Remove expandable cell styles */
+    .expandable-cell {
+      position: relative;
+      min-width: 200px;
+    }
+    
+    .toggle-btn {
+      display: none;
+    }
+    
+    .preview-content {
+      display: none;
+    }
+    
+    .full-content {
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+
+  <div style="background-color: #FEF3C7; color: #92400E; padding: 10px; margin-bottom: 20px; border-radius: 5px; display: none;" id="corsWarning">
+    ⚠️ This page must be accessed through a web server (e.g., http://localhost:8080) and not opened directly as a file.
+  </div>
+
+  <h1>Bread Sales Dashboard</h1>
+
+  <div class="selection-panel">
+    <div class="selection-step">
+      <span class="step-number">1</span>
+      <label for="dateSelect">Select a date:</label>
+      <select id="dateSelect"></select>
+    </div>
+    
+    <div class="selection-step" id="userIdStep" style="display: none;">
+      <span class="step-number">2</span>
+      <label for="userIdSelect">Select a user:</label>
+      <select id="userIdSelect"></select>
+    </div>
+  </div>
+
+  <div id="status" style="color: #265DAB; margin: 10px 0;"></div>
+
+  <div class="tabs">
+    <button class="tab-button active" data-tab="csv">📦 Inventory & CSV</button>
+    <button class="tab-button" data-tab="sales">🧾 Customer Sales</button>
+    <button class="tab-button" data-tab="charts">📊 Charts</button>
+  </div>
+
+  <div class="copy-buttons">
+    <button class="copy-button" data-tab="csv">📥 Download CSV Data</button>
+    <button class="copy-button" data-tab="sales" style="display:none;">📥 Download Sales Data</button>
+  </div>
+
+  <div id="csv" class="tab-content active">
+    <div id="csvContent">Please select a date and user to load CSV...</div>
+  </div>
+
+  <div id="sales" class="tab-content">
+    <div id="salesContent">Please select a date and user to load Sales...</div>
+  </div>
+
+  <div id="charts" class="tab-content">
+    <div id="chartsContent">
+      <div class="chart-container">
+        <div class="chart-box">
+          <h3>Sales Overview by Bread Type</h3>
+          <canvas id="salesOverviewChart"></canvas>
+        </div>
+        
+        <div class="chart-box">
+          <h3>Inventory Management</h3>
+          <canvas id="inventoryChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    if (window.location.protocol === 'file:') {
+      document.getElementById('corsWarning').style.display = 'block';
+    }
+
+    // ✅ Appwrite Setup
+    const client = new Appwrite.Client();
+    client.setEndpoint('https://cloud.appwrite.io/v1').setProject('676a55320025aab57b76');
+    const databases = new Appwrite.Databases(client);
+    const databaseId = '676a5743003e13f9398d';
+    const csvCollection = 'CSV';
+    const salesCollection = 'sales';
+
+    // Elements
+    const dateSelect = document.getElementById('dateSelect');
+    const userIdSelect = document.getElementById('userIdSelect');
+    const userIdStep = document.getElementById('userIdStep');
+    const csvContent = document.getElementById('csvContent');
+    const salesContent = document.getElementById('salesContent');
+    const chartsContent = document.getElementById('chartsContent');
+    const statusElement = document.getElementById('status');
+
+    // Chart instances
+    let salesOverviewChart = null;
+    let inventoryChart = null;
+
+    // Display status messages
+    function showStatus(message, isError = false) {
+      statusElement.innerHTML = message;
+      statusElement.style.color = isError ? '#DC2626' : '#265DAB';
+      console.log(isError ? `ERROR: ${message}` : message);
+    }
+
+    // Function to add copy naming convention button
+    function setupCopyNamingButton() {
+      const copyNamingBtn = document.createElement('button');
+      copyNamingBtn.textContent = '📋 Copy Naming Convention';
+      copyNamingBtn.style.backgroundColor = '#F59E0B';
+      copyNamingBtn.style.color = 'white';
+      copyNamingBtn.style.border = 'none';
+      copyNamingBtn.style.borderRadius = '5px';
+      copyNamingBtn.style.padding = '8px 12px';
+      copyNamingBtn.style.margin = '0 10px';
+      
+      document.querySelector('.selection-panel').appendChild(copyNamingBtn);
+      
+      copyNamingBtn.addEventListener('click', function() {
+        const selectedDate = dateSelect.value;
+        const selectedUser = userIdSelect.value;
+        
+        if (!selectedDate || !selectedUser) {
+          showStatus("Please select both a date and user first", true);
+          return;
+        }
+        
+        // Format date for naming convention (MM-DD-YY)
+        const formattedDate = formatDateForFilename(selectedDate);
+        const namingConvention = `${formattedDate} _ ${selectedUser}`;
+        
+        // Copy to clipboard
+        navigator.clipboard.writeText(namingConvention).then(() => {
+          showStatus(`Copied naming convention: ${namingConvention}`);
+        }).catch(err => {
+          console.error('Failed to copy: ', err);
+          showStatus("Failed to copy to clipboard", true);
+        });
+      });
+
+      // Add Download Customers button
+      const downloadCustomersBtn = document.createElement('button');
+      downloadCustomersBtn.textContent = '📥 Download Customers';
+      downloadCustomersBtn.style.backgroundColor = '#265DAB';
+      downloadCustomersBtn.style.color = 'white';
+      downloadCustomersBtn.style.border = 'none';
+      downloadCustomersBtn.style.borderRadius = '5px';
+      downloadCustomersBtn.style.padding = '8px 12px';
+      downloadCustomersBtn.style.margin = '0 10px';
+      
+      document.querySelector('.selection-panel').appendChild(downloadCustomersBtn);
+      
+      downloadCustomersBtn.addEventListener('click', async function() {
+        try {
+          showStatus("Fetching customer data...");
+          
+          // Function to fetch all customers with pagination
+          async function fetchAllCustomers() {
+            let allCustomers = [];
+            let offset = 0;
+            const limit = 100; // Fetch in batches of 100
+            
+            while (true) {
+              const response = await databases.listDocuments(
+                databaseId,
+                'customers',
+                [
+                  Appwrite.Query.limit(limit),
+                  Appwrite.Query.offset(offset)
+                ]
+              );
+              
+              allCustomers = allCustomers.concat(response.documents);
+              
+              // If we got less than the limit, we've reached the end
+              if (response.documents.length < limit) {
+                break;
+              }
+              
+              offset += limit;
+            }
+            
+            return allCustomers;
+          }
+          
+          // Fetch all customers
+          const customers = await fetchAllCustomers();
+          
+          if (customers.length === 0) {
+            showStatus("No customers found", true);
+            return;
+          }
+          
+          // Create CSV content
+          const headers = ['Customer ID', 'Name', 'Store Name', 'Address', 'Phone Number', 'Schedule'];
+          const rows = customers.map(customer => [
+            customer.customerId || '',
+            customer.name || '',
+            customer.storeName || '',
+            customer.address || '',
+            customer.phoneNumber || '',
+            customer.schedule || ''
+          ]);
+          
+          // Combine headers and rows
+          const textContent = [
+            headers.join(','),
+            ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+          ].join('\n');
+          
+          // Generate filename
+          const filename = 'customers.txt';
+          
+          // Download the file
+          downloadTextFile(textContent, filename);
+          
+          showStatus(`Downloaded ${customers.length} customers successfully`);
+        } catch (error) {
+          console.error("Error downloading customers:", error);
+          showStatus(`Error downloading customers: ${error.message}`, true);
+        }
+      });
+    }
+
+    // Helper function to format date as MM-DD-YY
+    function formatDateForDisplay(dateString) {
+      const date = new Date(dateString);
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const year = String(date.getFullYear()).slice(-2); // Get last 2 digits of year
+      return `${month}-${day}-${year}`;
+    }
+
+    // Helper function to format date for filename
+    function formatDateForFilename(dateString) {
+      const date = new Date(dateString);
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const year = String(date.getFullYear()).slice(-2); // Get last 2 digits of year
+      return `${month}-${day}-${year}`;
+    }
+
+    // Global variables for date pagination
+    let allAvailableDates = [];
+    let currentDateOffset = 0;
+    const datesPerPage = 10;
+
+    async function getAvailableDates() {
+      showStatus("Fetching available dates...");
+      
+      try {
+        console.log("Starting date fetch process...");
+        
+        // Fetch documents with a reasonable limit
+        console.log("Fetching CSV documents...");
+        const csvDocs = await databases.listDocuments(databaseId, csvCollection, [
+          Appwrite.Query.orderDesc("date"),
+          Appwrite.Query.limit(100)
+        ]);
+        console.log("CSV documents received:", csvDocs);
+        
+        console.log("Fetching Sales documents...");
+        const salesDocs = await databases.listDocuments(databaseId, salesCollection, [
+          Appwrite.Query.orderDesc("date"),
+          Appwrite.Query.limit(100)
+        ]);
+        console.log("Sales documents received:", salesDocs);
+        
+        // Log the raw dates from each collection
+        const csvDates = csvDocs.documents.map(doc => doc.date);
+        const salesDates = salesDocs.documents.map(doc => doc.date);
+        console.log("Raw CSV dates:", csvDates);
+        console.log("Raw Sales dates:", salesDates);
+        
+        // Combine and deduplicate dates
+        allAvailableDates = [...new Set([...csvDates, ...salesDates])];
+        console.log("All unique dates before sorting:", allAvailableDates);
+        
+        // Sort dates in descending order
+        allAvailableDates.sort((a, b) => new Date(b) - new Date(a));
+        console.log("All unique dates after sorting:", allAvailableDates);
+        
+        // Reset pagination
+        currentDateOffset = 0;
+        
+        if (allAvailableDates.length === 0) {
+          console.log("No dates found in any documents");
+          showStatus("No dates found. Try using Sample Data button.", true);
+          const today = new Date().toISOString().split('T')[0];
+          const formattedToday = formatDateForDisplay(today);
+          dateSelect.innerHTML = `<option value="">Select a date</option><option value="${today}">${formattedToday} (Today)</option>`;
+        } else {
+          console.log(`Found ${allAvailableDates.length} dates, populating select element`);
+          populateDateDropdown();
+          showStatus(`Found ${allAvailableDates.length} dates`);
+        }
+      } catch (error) {
+        console.error("Error in getAvailableDates:", error);
+        console.error("Error details:", {
+          message: error.message,
+          code: error.code,
+          type: error.type,
+          response: error.response
+        });
+        showStatus(`Error fetching dates: ${error.message}`, true);
+        const today = new Date().toISOString().split('T')[0];
+        const formattedToday = formatDateForDisplay(today);
+        dateSelect.innerHTML = `<option value="">Select a date</option><option value="${today}">${formattedToday} (Today)</option>`;
+      }
+    }
+
+    // Function to populate date dropdown with pagination
+    function populateDateDropdown() {
+      const startIndex = currentDateOffset;
+      const endIndex = Math.min(startIndex + datesPerPage, allAvailableDates.length);
+      const datesToShow = allAvailableDates.slice(startIndex, endIndex);
+      
+      // Clear existing options except the first one
+      if (currentDateOffset === 0) {
+        dateSelect.innerHTML = '<option value="">Select a date</option>';
+      }
+      
+      // Add date options
+      datesToShow.forEach(date => {
+        const formattedDate = formatDateForDisplay(date);
+        const option = document.createElement('option');
+        option.value = date;
+        option.textContent = formattedDate;
+        dateSelect.appendChild(option);
+      });
+      
+      // Add "Load More" option if there are more dates
+      if (endIndex < allAvailableDates.length) {
+        const loadMoreOption = document.createElement('option');
+        loadMoreOption.value = 'load_more';
+        loadMoreOption.textContent = 'Load More';
+        loadMoreOption.style.fontWeight = 'bold';
+        loadMoreOption.style.color = '#265DAB';
+        dateSelect.appendChild(loadMoreOption);
+      }
+    }
+
+    // Function to load more dates
+    function loadMoreDates() {
+      currentDateOffset += datesPerPage;
+      populateDateDropdown();
+    }
+
+    // New function to fetch users for a selected date
+    async function getUsersForDate(date) {
+      showStatus(`Fetching users for date: ${date}...`);
+      userIdSelect.innerHTML = '<option value="">Loading users...</option>';
+      
+      try {
+        // Get all documents for the selected date from both collections
+        const csvQuery = [Appwrite.Query.equal("date", date)];
+        const salesQuery = [Appwrite.Query.equal("date", date)];
+        
+        const csvDocs = await databases.listDocuments(databaseId, csvCollection, csvQuery);
+        const salesDocs = await databases.listDocuments(databaseId, salesCollection, salesQuery);
+        
+        // Extract unique userIds
+        const csvUserIds = csvDocs.documents.map(doc => doc.userId);
+        const salesUserIds = salesDocs.documents.map(doc => doc.userId);
+        const allUserIds = [...new Set([...csvUserIds, ...salesUserIds])];
+        
+        console.log(`Found ${allUserIds.length} users for date ${date}:`, allUserIds);
+        
+        if (allUserIds.length === 0) {
+          userIdSelect.innerHTML = '<option value="">No users found</option>';
+          showStatus(`No users found for date: ${date}`, true);
+        } else {
+          // Add placeholder option as first option
+          userIdSelect.innerHTML = '<option value="">Select a user</option>';
+          // Add all users as options
+          allUserIds.forEach(userId => {
+            userIdSelect.innerHTML += `<option value="${userId}">${userId}</option>`;
+          });
+          
+          showStatus(`Found ${allUserIds.length} users for date: ${date}`);
+        }
+        
+        // Show the user selection step
+        userIdStep.style.display = 'flex';
+      } catch (error) {
+        console.error(`Error fetching users for date ${date}:`, error);
+        userIdSelect.innerHTML = '<option value="">Error loading users</option>';
+        showStatus(`Error fetching users: ${error.message}`, true);
+      }
+    }
+
+    async function loadData(date, userId) {
+      showStatus(`Loading data for ${date}, User: ${userId}...`);
+      csvContent.innerHTML = "Loading CSV...";
+      salesContent.innerHTML = "Loading Sales...";
+      
+      let csvData = null;
+      let salesData = null;
+      let expensesData = null;
+
+      // Prepare query - filter by date and userId
+      const queries = [
+        Appwrite.Query.equal("date", date), 
+        Appwrite.Query.equal("userId", userId), 
+        Appwrite.Query.limit(1)
+      ];
+
+      // -- Fetch CSV -- //
+      try {
+        showStatus(`Fetching CSV data for ${date}, User: ${userId}...`);
+        
+        const res = await databases.listDocuments(databaseId, csvCollection, queries);
+        
+        console.log("CSV query result:", res);
+        
+        if (res.documents.length === 0) {
+          showStatus(`No CSV data found for ${date} and user ${userId}`, true);
+          csvContent.innerHTML = `<p>No CSV data available for ${date} and user ${userId}</p>`;
+        } else {
+          const csvText = res.documents[0]?.CSV_Doc || '';
+          
+          if (!csvText || csvText.trim() === '') {
+            throw new Error("Empty CSV data received from server");
+          }
+          
+          csvContent.innerHTML = prettyPrintCSVTable(csvText);
+          setupTableResizing();
+          csvData = parseCSVStringToArray(csvText);
+          showStatus(`CSV data loaded for ${date}, User: ${userId}`);
+        }
+      } catch (e) {
+        console.error("CSV Error:", e);
+        csvContent.innerHTML = `<p style="color:red">CSV Error: ${e.message}</p>`;
+        showStatus(`Error loading CSV data: ${e.message}`, true);
+      }
+
+      // -- Fetch Sales -- //
+      try {
+        showStatus(`Fetching Sales data for ${date}, User: ${userId}...`);
+        
+        const res = await databases.listDocuments(databaseId, salesCollection, queries);
+        
+        console.log("Sales query result:", res);
+        
+        if (res.documents.length === 0) {
+          showStatus(`No Sales data found for ${date} and user ${userId}`, true);
+          salesContent.innerHTML = `<p>No Sales data available for ${date} and user ${userId}</p>`;
+        } else {
+          const salesCSV = res.documents[0]?.receiptSummary || '';
+          
+          if (!salesCSV || salesCSV.trim() === '') {
+            throw new Error("Empty sales data received from server");
+          }
+          
+          salesData = parseCSVStringToArray(salesCSV);
+          salesContent.innerHTML = generateTable(salesData);
+          setupTableResizing();
+          showStatus(`Sales data loaded for ${date}, User: ${userId}`);
+        }
+      } catch (e) {
+        console.error("Sales Error:", e);
+        salesContent.innerHTML = `<p style="color:red">Sales Error: ${e.message}</p>`;
+        showStatus(`Error loading Sales data: ${e.message}`, true);
+      }
+
+      // -- Fetch Expenses -- //
+      try {
+        showStatus(`Fetching Expenses data for ${date}, User: ${userId}...`);
+        
+        const expensesRes = await databases.listDocuments(
+          databaseId,
+          '680476b00037a3775919', // expenses collection ID
+          [
+            Appwrite.Query.equal("date", date),
+            Appwrite.Query.equal("userId", userId)
+          ]
+        );
+        
+        console.log("Expenses query result:", expensesRes);
+        
+        if (expensesRes.documents.length > 0) {
+          expensesData = expensesRes.documents.map(doc => ({
+            title: doc.title,
+            amount: doc.amount,
+            note: doc.note || ''
+          }));
+          showStatus(`Expenses data loaded for ${date}, User: ${userId}`);
+        } else {
+          expensesData = [];
+          showStatus(`No expenses found for ${date} and user ${userId}`);
+        }
+      } catch (e) {
+        console.error("Expenses Error:", e);
+        expensesData = [];
+        showStatus(`Error loading Expenses data: ${e.message}`, true);
+      }
+
+      // -- Update Charts -- //
+      if (csvData && csvData.length > 0) {
+        updateCharts(csvData, salesData);
+        showStatus("Charts updated successfully");
+      } else {
+        showStatus("No data available for charts", true);
+      }
+
+      // Store expenses data in a global variable for download
+      window.currentExpensesData = expensesData;
+    }
+
+    // Add event listener to date select to fetch users when date changes
+    dateSelect.addEventListener("change", () => {
+      const selectedDate = dateSelect.value;
+      
+      // Handle "Load More" option
+      if (selectedDate === 'load_more') {
+        loadMoreDates();
+        // Reset selection to empty
+        dateSelect.value = '';
+        return;
+      }
+      
+      // Reset user selection when date changes
+      userIdSelect.innerHTML = '';
+      userIdStep.style.display = 'none';
+      
+      if (selectedDate) {
+        getUsersForDate(selectedDate);
+      }
+    });
+
+    // Updated userIdSelect event listener to automatically load data
+    userIdSelect.addEventListener("change", () => {
+      const selectedDate = dateSelect.value;
+      const selectedUserId = userIdSelect.value;
+      
+      if (selectedUserId) {
+        loadData(selectedDate, selectedUserId);
+      }
+    });
+
+    // Updated chart function to properly handle chart dimensions
+    function updateCharts(csvData, salesData) {
+      try {
+        let breadData;
+        
+        if (!csvData || csvData.length < 2) {
+          showStatus("Insufficient data for charts", true);
+          return;
+        }
+        
+        // Process CSV data for charts and filter out breads with 0 net sales
+        breadData = csvData.slice(1, -1)
+          .map(row => {
+            return {
+              name: row[0] || 'Unknown',
+              price: parseFloat(row[1]) || 0,
+              load: parseInt(row[2]) || 0,
+              bo: parseInt(row[3]) || 0,
+              returned: parseInt(row[4]) || 0,
+              netSaleQty: parseInt(row[5]) || 0,
+              netSaleValue: parseFloat(row[6]) || 0
+            };
+          })
+          .filter(bread => bread.netSaleQty > 0); // Only show breads with sales
+        
+        if (breadData.length === 0) {
+          showStatus("No bread data with sales found for charts", true);
+          return;
+        }
+        
+        // Define chart colors
+        const chartColors = {
+          sales: '#3B82F6',    // Blue
+          revenue: '#10B981',  // Green
+          load: '#6366F1',     // Indigo
+          sold: '#059669',     // Green
+          returns: '#EF4444',  // Red
+          bo: '#F59E0B'        // Amber
+        };
+        
+        // Destroy existing charts before creating new ones
+        if (salesOverviewChart) {
+          salesOverviewChart.destroy();
+          salesOverviewChart = null;
+        }
+        
+        if (inventoryChart) {
+          inventoryChart.destroy();
+          inventoryChart = null;
+        }
+        
+        // ---- Sales Overview Chart ----
+        const salesOverviewCtx = document.getElementById('salesOverviewChart').getContext('2d');
+        salesOverviewChart = new Chart(salesOverviewCtx, {
+          type: 'bar',
+          data: {
+            labels: breadData.map(item => item.name),
+            datasets: [
+              {
+                label: 'Quantity Sold',
+                data: breadData.map(item => item.netSaleQty),
+                backgroundColor: chartColors.sales,
+                order: 2,
+                yAxisID: 'y'
+              },
+              {
+                label: 'Revenue (₱)',
+                data: breadData.map(item => item.netSaleValue),
+                backgroundColor: chartColors.revenue,
+                type: 'line',
+                order: 1,
+                yAxisID: 'y1',
+                borderColor: chartColors.revenue,
+                pointBackgroundColor: chartColors.revenue,
+                tension: 0.1
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'top'
+              },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    let label = context.dataset.label || '';
+                    if (label) {
+                      label += ': ';
+                    }
+                    if (context.dataset.yAxisID === 'y1') {
+                      label += '₱' + context.raw.toFixed(2);
+                    } else {
+                      label += context.raw;
+                      // Add calculated amount for Quantity Sold
+                      if (context.dataset.label === 'Quantity Sold') {
+                        const breadIndex = context.dataIndex;
+                        const bread = breadData[breadIndex];
+                        const calculatedAmount = bread.netSaleQty * bread.price;
+                        label += `\n(Amount: ₱${calculatedAmount.toFixed(2)})`;
+                      }
+                    }
+                    return label;
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                ticks: {
+                  maxRotation: 60,
+                  minRotation: 60,
+                  autoSkip: false,
+                  callback: function(value, index, values) {
+                    // Return the full label without truncation
+                    return this.getLabelForValue(value);
+                  }
+                }
+              },
+              y: {
+                beginAtZero: true,
+                title: {
+                  display: true,
+                  text: 'Quantity'
+                }
+              },
+              y1: {
+                beginAtZero: true,
+                position: 'right',
+                grid: {
+                  drawOnChartArea: false
+                },
+                title: {
+                  display: true,
+                  text: 'Revenue (₱)'
+                },
+                ticks: {
+                  callback: value => '₱' + value
+                }
+              }
+            }
+          }
+        });
+        
+        // ---- Inventory Management Chart ----
+        const inventoryCtx = document.getElementById('inventoryChart').getContext('2d');
+        inventoryChart = new Chart(inventoryCtx, {
+          type: 'bar',
+          data: {
+            labels: breadData.map(item => item.name),
+            datasets: [
+              {
+                label: 'Initial Load',
+                data: breadData.map(item => item.load),
+                backgroundColor: chartColors.load
+              },
+              {
+                label: 'Sold',
+                data: breadData.map(item => item.netSaleQty),
+                backgroundColor: chartColors.sold
+              },
+              {
+                label: 'Returns',
+                data: breadData.map(item => item.returned),
+                backgroundColor: chartColors.returns
+              },
+              {
+                label: 'B.O.',
+                data: breadData.map(item => item.bo),
+                backgroundColor: chartColors.bo
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'top'
+              },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    return context.dataset.label + ': ' + context.raw + ' pcs';
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                ticks: {
+                  maxRotation: 60,
+                  minRotation: 60,
+                  autoSkip: false,
+                  callback: function(value, index, values) {
+                    // Return the full label without truncation
+                    return this.getLabelForValue(value);
+                  }
+                }
+              },
+              y: {
+                beginAtZero: true,
+                title: {
+                  display: true,
+                  text: 'Quantity (pcs)'
+                }
+              }
+            }
+          }
+        });
+        
+        showStatus("Charts updated successfully");
+      } catch (error) {
+        console.error("Chart rendering error:", error);
+        showStatus(`Chart error: ${error.message}`, true);
+      }
+    }
+
+    // Helper functions remain largely unchanged
+    function generateColors(count) {
+      const baseColors = [
+        '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', 
+        '#EC4899', '#6366F1', '#14B8A6', '#F97316', '#06B6D4',
+        '#84CC16', '#A855F7', '#D946EF', '#265DAB', '#059669'
+      ];
+      
+      if (count <= baseColors.length) {
+        return baseColors.slice(0, count);
+      }
+      
+      const colors = [];
+      for (let i = 0; i < count; i++) {
+        colors.push(baseColors[i % baseColors.length]);
+      }
+      return colors;
+    }
+
+    function prettyPrintCSVTable(csv) {
+      const rows = csv.trim().split("\n").map(row => row.split(','));
+      return generateTable(rows);
+    }
+
+    function generateTable(data) {
+      if (data.length === 0) return "<p>No data available</p>";
+      
+      function formatItemsList(items) {
+        if (!items) return '';
+        return items;
+      }
+      
+      let thead = `<thead><tr>${data[0].map(h => `<th>${escapeHTML(h)}<div class="resizer"></div></th>`).join("")}</tr></thead>`;
+      let tbody = data.slice(1).map(row => {
+        return `<tr>${row.map((cell, index) => {
+          if (data[0][index] === 'Items Purchased' || data[0][index] === 'Returns') {
+            return `<td>${cell ? formatItemsList(cell) : ''}</td>`;
+          }
+          return `<td>${escapeHTML(cell)}</td>`;
+        }).join('')}</tr>`;
+      }).join('');
+      
+      // Add a total row for sales data if there's an Amount column
+      const amountColIndex = data[0].findIndex(header => header.includes('Amount'));
+      
+      // More precisely identify if this is customer sales data (vs inventory data)
+      // by checking for headers that only appear in customer sales
+      const isCustomerSalesData = data[0].some(header => 
+        ["Customer", "Payment Method", "Items Purchased"].includes(header)
+      );
+      
+      // Only add total row for Customer Sales data
+      if (amountColIndex !== -1 && isCustomerSalesData) {
+        // Calculate total amount from the data
+        let totalAmount = 0;
+        data.slice(1).forEach(row => {
+          if (row[amountColIndex]) {
+            // Extract numeric value from the amount (remove ₱ and commas)
+            const amountStr = row[amountColIndex].replace('₱', '').replace(/,/g, '').trim();
+            const amount = parseFloat(amountStr);
+            if (!isNaN(amount)) {
+              totalAmount += amount;
+            }
+          }
+        });
+        
+        // Create total row
+        const totalRow = Array(data[0].length).fill('');
+        totalRow[0] = 'TOTAL';
+        totalRow[amountColIndex] = `₱${totalAmount.toFixed(2)}`;
+        
+        // Add total row to tbody
+        tbody += `<tr style="font-weight: bold; background-color: #f0f4f8;">${
+          totalRow.map((cell, index) => `<td>${cell}</td>`).join('')
+        }</tr>`;
+      }
+      
+      return `<table>${thead}<tbody>${tbody}</tbody></table>`;
+    }
+
+    function toggleContent(btn) {
+      const cell = btn.parentElement;
+      const preview = cell.querySelector('.preview-content');
+      const full = cell.querySelector('.full-content');
+      
+      if (full.style.display === 'none') {
+        preview.style.display = 'none';
+        full.style.display = 'block';
+        btn.textContent = 'Show Less';
+      } else {
+        preview.style.display = 'block';
+        full.style.display = 'none';
+        btn.textContent = 'Show More';
+      }
+    }
+
+    function parseCSVStringToArray(str) {
+      const lines = str.trim().split("\n");
+      return lines.map(line => {
+        return line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g)?.map(val =>
+          val.replace(/^"|"$/g, "")
+        ) || [];
+      });
+    }
+
+    function escapeHTML(str) {
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+
+
+    document.querySelectorAll(".tab-button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const target = btn.dataset.tab;
+
+        document.querySelectorAll(".tab-button").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+
+        document.querySelectorAll(".tab-content").forEach(content => {
+          content.classList.remove("active");
+          if (content.id === target) content.classList.add("active");
+        });
+
+        document.querySelectorAll('.copy-button').forEach(b => {
+          b.style.display = (b.dataset.tab === target && target !== 'charts') ? 'inline-block' : 'none';
+        });
+      });
+    });
+
+    document.querySelectorAll('.copy-button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        const html = document.getElementById(tab + 'Content').querySelector('table');
+
+        if (!html) return alert("No table to download.");
+
+        let text = "";
+        html.querySelectorAll("tr").forEach(row => {
+          const cells = row.querySelectorAll("th, td");
+          text += [...cells].map(cell => `"${cell.innerText}"`).join(",") + "\n";
+        });
+
+        // For sales data, append expenses if available
+        if (tab === 'sales' && window.currentExpensesData && window.currentExpensesData.length > 0) {
+          // Add a blank line
+          text += "\n";
+          
+          // Add Expenses header with proper CSV formatting
+          text += '"Expenses",,,,,,\n';
+          
+          // Add expense columns header with proper CSV formatting
+          text += '"Title","Amount","Notes",,,,\n';
+          
+          // Add each expense with proper CSV escaping
+          window.currentExpensesData.forEach(expense => {
+            // Escape any double quotes in the text by doubling them
+            const escapedTitle = (expense.title || '').replace(/"/g, '""');
+            const escapedNote = (expense.note || '').replace(/"/g, '""');
+            const escapedAmount = (expense.amount || '').replace(/"/g, '""');
+            
+            // Format the row with proper CSV escaping
+            text += `"${escapedTitle}","${escapedAmount}","${escapedNote}",,,,\n`;
+          });
+        }
+
+        // Generate filename with selected date and tab name
+        const selectedDate = dateSelect.value;
+        if (!selectedDate) {
+          alert("Please select a date first.");
+          return;
+        }
+        
+        // Clean naming convention: CSV_date or Sales_date
+        const tabName = tab === 'csv' ? 'CSV ' : 'Sales ';
+        const filename = `${tabName}_ ${formatDateForFilename(selectedDate)}.txt`;
+        
+        // Call download function
+        downloadTextFile(text, filename);
+      });
+    });
+
+    // Function to handle file download
+    function downloadTextFile(content, filename) {
+      // Create a blob with the text content
+      const blob = new Blob([content], { type: 'text/plain' });
+      
+      // Create a URL for the blob
+      const url = URL.createObjectURL(blob);
+      
+      // Create a temporary link element
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      
+      // Append to the document
+      document.body.appendChild(link);
+      
+      // Trigger download
+      link.click();
+      
+      // Clean up
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        showStatus(`Downloaded ${filename} successfully`);
+      }, 100);
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      showStatus("Starting application...");
+      setupCopyNamingButton();
+      
+      console.log("Appwrite config:", {
+        endpoint: 'https://cloud.appwrite.io/v1',
+        projectId: '676a55320025aab57b76',
+        databaseId: databaseId,
+        csvCollection: csvCollection,
+        salesCollection: salesCollection
+      });
+      
+      testAppwriteConnection().then(success => {
+        if (success) {
+          getAvailableDates();
+        } else {
+          showStatus("Connection to Appwrite failed.", true);
+        }
+      });
+    });
+
+    async function testAppwriteConnection() {
+      try {
+        showStatus("Testing Appwrite connection...");
+        const health = await databases.listDocuments(databaseId, csvCollection, [
+          Appwrite.Query.limit(1)
+        ]);
+        console.log("Database connection successful:", health);
+        showStatus("Appwrite connection successful!");
+        return true;
+      } catch (error) {
+        console.error("Database connection failed:", error);
+        
+        if (error.message?.includes('Failed to fetch')) {
+          showStatus(`CORS Error: Please access this page through a web server (http://localhost:8080) instead of directly opening the file.`, true);
+        } else {
+          showStatus(`Appwrite connection failed: ${error.message}`, true);
+        }
+        return false;
+      }
+    }
+    
+    testAppwriteConnection();
+
+    // Add this new function for table column resizing
+    function setupTableResizing() {
+      document.querySelectorAll('th').forEach(th => {
+        const resizer = th.querySelector('.resizer');
+        let startX, startWidth;
+
+        resizer.addEventListener('mousedown', (e) => {
+          startX = e.pageX;
+          startWidth = th.offsetWidth;
+          
+          document.addEventListener('mousemove', resize);
+          document.addEventListener('mouseup', stopResize);
+        });
+
+        function resize(e) {
+          const width = startWidth + (e.pageX - startX);
+          th.style.width = width + 'px';
+        }
+
+        function stopResize() {
+          document.removeEventListener('mousemove', resize);
+          document.removeEventListener('mouseup', stopResize);
+        }
+      });
+    }
+  </script>
+</body>
+</html>
