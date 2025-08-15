@@ -8,8 +8,11 @@
   <!-- Appwrite SDK -->
   <script src="https://cdn.jsdelivr.net/npm/appwrite@13.0.1"></script>
 
-  <!-- Chart.js CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
+      <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
+    
+    <!-- Customer Dashboard Styles -->
+    <link rel="stylesheet" href="customerStyles.css">
 
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; background-color: #f9fafb; color: #1f2937; }
@@ -289,6 +292,7 @@
   <div class="tabs">
     <button class="tab-button active" data-tab="csv">📦 Inventory & CSV</button>
     <button class="tab-button" data-tab="sales">🧾 Customer Sales</button>
+    <button class="tab-button" data-tab="customers">👥 Customers</button>
     <button class="tab-button" data-tab="charts">📊 Charts</button>
   </div>
 
@@ -303,6 +307,19 @@
 
   <div id="sales" class="tab-content">
     <div id="salesContent">Please select a date and user to load Sales...</div>
+  </div>
+
+  <div id="customers" class="tab-content">
+    <div id="customersContent">
+      <div class="customer-controls">
+        <button id="processCustomersBtn" class="action-button">🔄 Process Customer Resolution</button>
+        <button id="viewCustomersBtn" class="action-button" style="display:none;">👥 View Resolved Customers</button>
+        <button id="refreshCustomersBtn" class="action-button" style="display:none;">🔄 Refresh Data</button>
+        <button id="clearCustomersBtn" class="action-button" style="display:none;">🗑️ Clear Data</button>
+      </div>
+      <div id="customerProcessingStatus"></div>
+      <div id="customersList"></div>
+    </div>
   </div>
 
   <div id="charts" class="tab-content">
@@ -321,6 +338,11 @@
     </div>
   </div>
 
+  <!-- Customer Dashboard Scripts -->
+  <script src="customerResolutionService.js"></script>
+  <script src="customerUtils.js"></script>
+  <script src="customerDashboard.js"></script>
+  
   <script>
     if (window.location.protocol === 'file:') {
       document.getElementById('corsWarning').style.display = 'block';
@@ -354,39 +376,22 @@
       console.log(isError ? `ERROR: ${message}` : message);
     }
 
-    // Function to add copy naming convention button
-    function setupCopyNamingButton() {
-      const copyNamingBtn = document.createElement('button');
-      copyNamingBtn.textContent = '📋 Copy Naming Convention';
-      copyNamingBtn.style.backgroundColor = '#F59E0B';
-      copyNamingBtn.style.color = 'white';
-      copyNamingBtn.style.border = 'none';
-      copyNamingBtn.style.borderRadius = '5px';
-      copyNamingBtn.style.padding = '8px 12px';
-      copyNamingBtn.style.margin = '0 10px';
+    // Function to add sample data button (still needed for testing)
+    function setupSampleDataButton() {
+      const sampleDataBtn = document.createElement('button');
+      sampleDataBtn.textContent = 'Use Sample Data';
+      sampleDataBtn.style.backgroundColor = '#F59E0B';
+      sampleDataBtn.style.color = 'white';
+      sampleDataBtn.style.border = 'none';
+      sampleDataBtn.style.borderRadius = '5px';
+      sampleDataBtn.style.padding = '8px 12px';
+      sampleDataBtn.style.margin = '0 10px';
       
-      document.querySelector('.selection-panel').appendChild(copyNamingBtn);
+      document.querySelector('.selection-panel').appendChild(sampleDataBtn);
       
-      copyNamingBtn.addEventListener('click', function() {
-        const selectedDate = dateSelect.value;
-        const selectedUser = userIdSelect.value;
-        
-        if (!selectedDate || !selectedUser) {
-          showStatus("Please select both a date and user first", true);
-          return;
-        }
-        
-        // Format date for naming convention (MM-DD-YY)
-        const formattedDate = formatDateForFilename(selectedDate);
-        const namingConvention = `${formattedDate} _ ${selectedUser}`;
-        
-        // Copy to clipboard
-        navigator.clipboard.writeText(namingConvention).then(() => {
-          showStatus(`Copied naming convention: ${namingConvention}`);
-        }).catch(err => {
-          console.error('Failed to copy: ', err);
-          showStatus("Failed to copy to clipboard", true);
-        });
+      sampleDataBtn.addEventListener('click', function() {
+        showStatus("Loading sample data...");
+        loadSampleData();
       });
 
       // Add Download Customers button
@@ -1121,7 +1126,32 @@
         .replace(/>/g, "&gt;");
     }
 
+    function loadSampleData() {
+      const sampleCSV = `Bread Name,Price,Load,B.O,Return,Net Sale,Amount
+"Pandesal",10.00,100,5,20,75,750.00
+"Ensaymada",15.00,50,2,8,40,600.00
+"Monay",12.00,80,3,15,62,744.00
+"Spanish Bread",18.00,60,1,10,49,882.00
+"Cheese Bread",20.00,40,0,5,35,700.00
+"TOTAL",,330,11,58,261,3676.00`;
 
+      const sampleSales = `Customer,Time,Amount,Payment Method,Items Purchased,Returns,Total Return
+"John Doe(Bakery)",9:15,₱250.00,cash,"10xPandesal,5xEnsaymada",,₱0.00
+"Maria Santos(Corner Store)",10:30,₱480.00,credit,"20xPandesal,10xMonay",,₱0.00
+"Pedro Garcia",11:45,₱360.00,cash,"10xCheese Bread,5xSpanish Bread","2xCheese Bread",₱40.00
+"Ana Reyes(Mini Mart)",13:20,₱600.00,partial(₱300.00),"15xPandesal,10xEnsaymada,10xMonay",,₱0.00
+"Carlos Lim(Bakery)",14:50,₱880.00,cash,"20xPandesal,15xMonay,10xSpanish Bread","5xMonay",₱60.00`;
+
+      const csvData = parseCSVStringToArray(sampleCSV);
+      const salesData = parseCSVStringToArray(sampleSales);
+      
+      csvContent.innerHTML = prettyPrintCSVTable(sampleCSV);
+      salesContent.innerHTML = generateTable(salesData);
+      
+      updateCharts(csvData, salesData);
+      
+      showStatus("Sample data loaded successfully");
+    }
 
     document.querySelectorAll(".tab-button").forEach(btn => {
       btn.addEventListener("click", () => {
@@ -1222,7 +1252,7 @@
 
     document.addEventListener('DOMContentLoaded', function() {
       showStatus("Starting application...");
-      setupCopyNamingButton();
+      setupSampleDataButton();
       
       console.log("Appwrite config:", {
         endpoint: 'https://cloud.appwrite.io/v1',
@@ -1235,8 +1265,10 @@
       testAppwriteConnection().then(success => {
         if (success) {
           getAvailableDates();
+          // Initialize customer dashboard
+          initCustomerDashboard();
         } else {
-          showStatus("Connection to Appwrite failed.", true);
+          showStatus("Connection to Appwrite failed. Try using Sample Data button.", true);
         }
       });
     });
