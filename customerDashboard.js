@@ -1,133 +1,288 @@
 // Customer Dashboard
-// Main functionality for customer management and display
+// Main functionality for customer management and display with smart auto-processing
 
 let customerResolutionService;
 let allReceipts = [];
 let customerReceiptsMap = new Map(); // commonId -> array of receipts
+let isProcessing = false;
+let autoProcessingEnabled = true;
 
 // Initialize customer dashboard
 function initCustomerDashboard() {
   customerResolutionService = new CustomerResolutionService();
   
   // Add event listeners
-  document.getElementById('processCustomersBtn').addEventListener('click', processCustomerResolution);
+  document.getElementById('processCustomersBtn').addEventListener('click', () => processAllReceipts(true));
   document.getElementById('viewCustomersBtn').addEventListener('click', displayResolvedCustomers);
   document.getElementById('refreshCustomersBtn').addEventListener('click', refreshCustomerData);
   document.getElementById('clearCustomersBtn').addEventListener('click', clearCustomerData);
   
-  // Check if customers have been processed
+  // Check initial status
   checkCustomerStatus();
+  
+  // Set up tab change listener for auto-processing
+  setupAutoProcessing();
 }
 
-// Check if customers have been processed
-async function checkCustomerStatus() {
-  const stats = customerResolutionService.getStats();
+// Set up automatic processing when Customers tab is accessed
+function setupAutoProcessing() {
+  const customersTab = document.querySelector('[data-tab="customers"]');
+  if (customersTab) {
+    customersTab.addEventListener('click', handleCustomersTabClick);
+  }
   
-  if (stats.totalCustomers > 0) {
-    // Customers already processed, show view button
-    document.getElementById('viewCustomersBtn').style.display = 'inline-block';
-    document.getElementById('refreshCustomersBtn').style.display = 'inline-block';
-    
-    // Show status
-    const statusDiv = document.getElementById('customerProcessingStatus');
-    statusDiv.innerHTML = `
-      <div class="status-success">
-        ✅ Customer resolution completed! 
-        <span class="status-details">${stats.totalCustomers} customers, ${stats.totalMappings} mappings</span>
-      </div>
-    `;
+  // Also check on page load if customers tab is active
+  if (document.getElementById('customers').classList.contains('active')) {
+    handleCustomersTabClick();
   }
 }
 
-// Process customer resolution
-async function processCustomerResolution() {
-  const statusDiv = document.getElementById('customerProcessingStatus');
-  const processBtn = document.getElementById('processCustomersBtn');
+// Handle when customers tab is clicked
+async function handleCustomersTabClick() {
+  if (isProcessing) {
+    console.log('Processing already in progress, skipping auto-process');
+    return;
+  }
   
   try {
-    // Disable button and show processing status
-    processBtn.disabled = true;
-    processBtn.textContent = '🔄 Processing...';
+    // Check if we need to process any receipts
+    const needsProcessing = await checkForUnprocessedReceipts();
     
-    statusDiv.innerHTML = '<div class="processing-status">🔄 Starting customer resolution process...</div>';
-    
-    // Step 1: Fetch all receipts from Appwrite
-    statusDiv.innerHTML += '<div class="step-status">📥 Step 1: Fetching all receipts from Appwrite...</div>';
-    
-    allReceipts = await fetchAllReceipts();
-    
-    if (allReceipts.length === 0) {
-      statusDiv.innerHTML += '<div class="error">❌ No receipts found in Appwrite</div>';
-      return;
+    if (needsProcessing.hasUnprocessed) {
+      console.log(`Found ${needsProcessing.count} unprocessed receipts, starting auto-processing...`);
+      await processUnprocessedReceipts(needsProcessing.unprocessedReceipts);
+    } else {
+      console.log('All receipts are up to date');
+      // Just refresh the display if everything is current
+      if (customerResolutionService.getStats().totalCustomers > 0) {
+        await displayResolvedCustomers();
+      }
     }
-    
-    statusDiv.innerHTML += `<div class="step-success">✅ Step 1 Complete: Fetched ${allReceipts.length} receipts</div>`;
-    
-    // Step 2: Process customer resolution
-    statusDiv.innerHTML += '<div class="step-status">🔄 Step 2: Processing customer resolution...</div>';
-    
-    const resolutionResults = await processCustomerResolutionStep(allReceipts);
-    
-    statusDiv.innerHTML += `<div class="step-success">✅ Step 2 Complete: Resolved ${resolutionResults.totalCustomers} customers</div>`;
-    
-    // Step 3: Update Appwrite documents with commonId
-    statusDiv.innerHTML += '<div class="step-status">📝 Step 3: Updating Appwrite documents...</div>';
-    
-    const updateResults = await updateAppwriteDocuments(allReceipts);
-    
-    statusDiv.innerHTML += `<div class="step-success">✅ Step 3 Complete: Updated ${updateResults.updatedCount} documents</div>`;
-    
-    // Step 4: Build customer receipt map
-    statusDiv.innerHTML += '<div class="step-status">🗂️ Step 4: Building customer receipt map...</div>';
-    
-    buildCustomerReceiptMap(allReceipts);
-    
-    statusDiv.innerHTML += `<div class="step-success">✅ Step 4 Complete: Mapped receipts to customers</div>`;
-    
-    // Final status
-    const finalStats = customerResolutionService.getStats();
-    statusDiv.innerHTML += `
-      <div class="final-status">
-        🎉 Customer resolution completed successfully!
-        <div class="final-stats">
-          <span>📊 Total Receipts: ${allReceipts.length}</span>
-          <span>👥 Unique Customers: ${finalStats.totalCustomers}</span>
-          <span>🔗 Total Mappings: ${finalStats.totalMappings}</span>
-          <span>📝 Updated Documents: ${updateResults.updatedCount}</span>
-        </div>
-      </div>
-    `;
-    
-    // Show action buttons
-    document.getElementById('viewCustomersBtn').style.display = 'inline-block';
-    document.getElementById('refreshCustomersBtn').style.display = 'inline-block';
-    
   } catch (error) {
-    console.error('Error processing customers:', error);
-    statusDiv.innerHTML += `<div class="error">❌ Error: ${error.message}</div>`;
-  } finally {
-    // Re-enable button
-    processBtn.disabled = false;
-    processBtn.textContent = '🔄 Process Customer Resolution';
+    console.error('Error in auto-processing:', error);
+    showProcessingStatus(`Error in auto-processing: ${error.message}`, 'error');
   }
 }
 
-// Fetch all receipts from Appwrite
-async function fetchAllReceipts() {
+// Check for unprocessed receipts
+async function checkForUnprocessedReceipts() {
+  try {
+    showProcessingStatus('🔍 Checking for new receipts...', 'info');
+    
+    // Get the last processed receipt ID from localStorage
+    const lastProcessedId = localStorage.getItem('lastProcessedReceiptId');
+    const lastProcessedDate = customerResolutionService.getLastProcessedDate();
+    
+    // Fetch recent receipts from Appwrite
+    let queries = [
+      Appwrite.Query.orderDesc('$createdAt'),
+      Appwrite.Query.limit(100) // Start with recent 100
+    ];
+    
+    // If we have a last processed date, only get receipts after that
+    if (lastProcessedDate) {
+      queries.push(Appwrite.Query.greaterThan('date', lastProcessedDate.toISOString().split('T')[0]));
+    }
+    
+    const response = await databases.listDocuments(
+      databaseId,
+      '689d4a4b000b62bd70ca', // allreceipt collection ID
+      queries
+    );
+    
+    let unprocessedReceipts = [];
+    
+    if (lastProcessedId) {
+      // Filter out receipts that have been processed
+      unprocessedReceipts = response.documents.filter(receipt => {
+        return !receipt.commonId || receipt.$id > lastProcessedId;
+      });
+    } else {
+      // If no processing has been done, all receipts are unprocessed
+      unprocessedReceipts = response.documents.filter(receipt => !receipt.commonId);
+    }
+    
+    // If we found unprocessed receipts in the first 100, check if there are more
+    if (unprocessedReceipts.length > 0 && response.documents.length === 100) {
+      // There might be more, let's get a count
+      const totalUnprocessed = await getUnprocessedReceiptCount();
+      
+      if (totalUnprocessed > 100) {
+        // Get all unprocessed receipts in batches
+        unprocessedReceipts = await getAllUnprocessedReceipts();
+      }
+    }
+    
+    showProcessingStatus(`Found ${unprocessedReceipts.length} unprocessed receipts`, 'info');
+    
+    return {
+      hasUnprocessed: unprocessedReceipts.length > 0,
+      count: unprocessedReceipts.length,
+      unprocessedReceipts
+    };
+    
+  } catch (error) {
+    console.error('Error checking for unprocessed receipts:', error);
+    throw error;
+  }
+}
+
+// Get count of unprocessed receipts
+async function getUnprocessedReceiptCount() {
+  try {
+    const response = await databases.listDocuments(
+      databaseId,
+      '689d4a4b000b62bd70ca',
+      [
+        Appwrite.Query.isNull('commonId'),
+        Appwrite.Query.limit(1)
+      ]
+    );
+    
+    return response.total || 0;
+  } catch (error) {
+    console.warn('Could not get unprocessed receipt count:', error);
+    return 0;
+  }
+}
+
+// Get all unprocessed receipts in batches
+async function getAllUnprocessedReceipts() {
+  const allUnprocessed = [];
+  let offset = 0;
+  const limit = 100;
+  
+  while (true) {
+    try {
+      const response = await databases.listDocuments(
+        databaseId,
+        '689d4a4b000b62bd70ca',
+        [
+          Appwrite.Query.isNull('commonId'),
+          Appwrite.Query.limit(limit),
+          Appwrite.Query.offset(offset)
+        ]
+      );
+      
+      allUnprocessed.push(...response.documents);
+      
+      if (response.documents.length < limit) {
+        break; // No more documents
+      }
+      
+      offset += limit;
+      
+      // Update progress
+      showProcessingStatus(`Fetching unprocessed receipts... ${allUnprocessed.length} found`, 'info');
+      
+    } catch (error) {
+      console.error('Error fetching unprocessed receipts batch:', error);
+      break;
+    }
+  }
+  
+  return allUnprocessed;
+}
+
+// Process unprocessed receipts in smart batches (for Customers tab - efficient mode)
+async function processUnprocessedReceipts(receipts) {
+  if (receipts.length === 0) return;
+  
+  isProcessing = true;
+  
+  try {
+    showProcessingStatus(`🔄 Auto-processing ${receipts.length} new receipts...`, 'processing');
+    
+    // For smaller batches (under 100), use simpler processing
+    if (receipts.length <= 100) {
+      const results = customerResolutionService.processNewReceipts(receipts);
+      const updateResults = await updateReceiptBatch(receipts);
+      
+      showProcessingStatus(`✅ Processed ${results.processedCount} receipts, updated ${updateResults.updatedCount} documents`, 'success');
+    } else {
+      // For larger batches, use enhanced progress tracking
+      await processReceiptsWithProgress(receipts, false); // false = incremental mode
+      return; // processReceiptsWithProgress handles completion
+    }
+    
+    // Update tracking for smaller batches
+    if (receipts.length > 0) {
+      const lastReceipt = receipts[receipts.length - 1];
+      localStorage.setItem('lastProcessedReceiptId', lastReceipt.$id);
+    }
+    
+    // Rebuild customer receipt map
+    allReceipts = await fetchAllProcessedReceipts();
+    buildCustomerReceiptMap(allReceipts);
+    
+    // Show completion status
+    const stats = customerResolutionService.getStats();
+    const manualReviewCount = customerResolutionService.getManualReviewQueue().length;
+    
+    showProcessingStatus(`
+      ✅ Auto-processing completed! 
+      Total customers: ${stats.totalCustomers}
+      ${manualReviewCount > 0 ? `⚠️ ${manualReviewCount} items need manual review` : ''}
+    `, 'success');
+    
+    // Auto-display customers
+    await displayResolvedCustomers();
+    
+    // Update UI buttons
+    updateUIButtons();
+    
+  } catch (error) {
+    console.error('Error in batch processing:', error);
+    showProcessingStatus(`❌ Error processing receipts: ${error.message}`, 'error');
+  } finally {
+    isProcessing = false;
+  }
+}
+
+// Update a batch of receipts in Appwrite
+async function updateReceiptBatch(receipts) {
+  let updatedCount = 0;
+  let errorCount = 0;
+  
+  for (const receipt of receipts) {
+    try {
+      if (receipt.resolvedCommonId && (!receipt.commonId || receipt.commonId !== receipt.resolvedCommonId)) {
+        await databases.updateDocument(
+          databaseId,
+          '689d4a4b000b62bd70ca',
+          receipt.$id,
+          { commonId: receipt.resolvedCommonId }
+        );
+        
+        receipt.commonId = receipt.resolvedCommonId;
+        updatedCount++;
+      }
+    } catch (error) {
+      console.warn(`Could not update receipt ${receipt.$id}:`, error);
+      errorCount++;
+    }
+  }
+  
+  return { updatedCount, errorCount };
+}
+
+// Fetch all processed receipts (with commonId)
+async function fetchAllProcessedReceipts() {
   const receipts = [];
   let offset = 0;
   const limit = 100;
   
   while (true) {
     try {
-          const response = await databases.listDocuments(
-      databaseId,
-      '689d4a4b000b62bd70ca', // allreceipt collection ID
-      [
-        Appwrite.Query.limit(limit),
-        Appwrite.Query.offset(offset)
-      ]
-    );
+      const response = await databases.listDocuments(
+        databaseId,
+        '689d4a4b000b62bd70ca',
+        [
+          Appwrite.Query.isNotNull('commonId'),
+          Appwrite.Query.limit(limit),
+          Appwrite.Query.offset(offset)
+        ]
+      );
       
       receipts.push(...response.documents);
       
@@ -137,6 +292,200 @@ async function fetchAllReceipts() {
       
       offset += limit;
     } catch (error) {
+      console.error('Error fetching processed receipts:', error);
+      break;
+    }
+  }
+  
+  return receipts;
+}
+
+// Show processing status with different types and rolling log (max 10 messages)
+function showProcessingStatus(message, type = 'info') {
+  const statusDiv = document.getElementById('customerProcessingStatus');
+  const className = type === 'error' ? 'error' : 
+                   type === 'success' ? 'step-success' :
+                   type === 'processing' ? 'processing-status' : 'step-status';
+  
+  // Get current messages, split by div elements
+  let currentHTML = statusDiv.innerHTML;
+  let messages = [];
+  
+  if (currentHTML.trim()) {
+    // Extract existing messages from divs
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = currentHTML;
+    const existingDivs = tempDiv.querySelectorAll('div');
+    messages = Array.from(existingDivs).map(div => ({
+      content: div.innerHTML,
+      className: div.className
+    }));
+  }
+  
+  // Add new message
+  messages.push({
+    content: message,
+    className: className
+  });
+  
+  // Keep only last 10 messages
+  if (messages.length > 10) {
+    messages = messages.slice(-10);
+  }
+  
+  // Rebuild status div
+  statusDiv.innerHTML = messages.map(msg => 
+    `<div class="${msg.className}">${msg.content}</div>`
+  ).join('');
+  
+  // Auto-scroll to bottom
+  statusDiv.scrollTop = statusDiv.scrollHeight;
+}
+
+// Update UI buttons based on current state
+function updateUIButtons() {
+  const stats = customerResolutionService.getStats();
+  
+  if (stats.totalCustomers > 0) {
+    document.getElementById('viewCustomersBtn').style.display = 'inline-block';
+    document.getElementById('refreshCustomersBtn').style.display = 'inline-block';
+    document.getElementById('clearCustomersBtn').style.display = 'inline-block';
+    
+    // Update process button text
+    document.getElementById('processCustomersBtn').textContent = '🔄 Reprocess All Receipts';
+  }
+}
+
+// Manual process all receipts (when button is clicked) - ALWAYS reprocesses everything
+async function processAllReceipts(forceReprocess = false) {
+  if (isProcessing) {
+    alert('Processing is already in progress. Please wait...');
+    return;
+  }
+  
+  const processBtn = document.getElementById('processCustomersBtn');
+  const originalText = processBtn.textContent;
+  
+  try {
+    isProcessing = true;
+    processBtn.disabled = true;
+    processBtn.textContent = '🔄 Processing...';
+    
+    // ALWAYS clear existing data for full reprocess when button is clicked
+    customerResolutionService.clearData();
+    localStorage.removeItem('lastProcessedReceiptId');
+    
+    showProcessingStatus('🔄 Starting full receipt processing (reprocessing ALL receipts)...', 'processing');
+    
+    // Fetch ALL receipts (including those with commonId)
+    allReceipts = await fetchAllReceiptsForReprocessing();
+    
+    if (allReceipts.length === 0) {
+      showProcessingStatus('❌ No receipts found in database', 'error');
+      return;
+    }
+    
+    showProcessingStatus(`📥 Fetched ${allReceipts.length} receipts, processing...`, 'processing');
+    
+    // Process all receipts with enhanced progress tracking
+    await processReceiptsWithProgress(allReceipts, true); // true = full reprocess mode
+    
+  } catch (error) {
+    console.error('Error in processAllReceipts:', error);
+    showProcessingStatus(`❌ Error: ${error.message}`, 'error');
+  } finally {
+    isProcessing = false;
+    processBtn.disabled = false;
+    processBtn.textContent = originalText;
+  }
+}
+
+// Check if customers have been processed
+async function checkCustomerStatus() {
+  const stats = customerResolutionService.getStats();
+  
+  if (stats.totalCustomers > 0) {
+    updateUIButtons();
+    
+    // Show status with enhanced stats
+    const statusDiv = document.getElementById('customerProcessingStatus');
+    const lastProcessed = stats.lastProcessedDate ? new Date(stats.lastProcessedDate).toLocaleDateString() : 'Never';
+    
+    statusDiv.innerHTML = `
+      <div class="status-success">
+        ✅ Customer resolution system ready! 
+        <div class="status-details">
+          <span>👥 ${stats.totalCustomers} customers</span>
+          <span>🏷️ ${stats.totalAliases} aliases</span>
+          <span>📅 Last processed: ${lastProcessed}</span>
+          ${stats.manualReviewCount > 0 ? `<span style="color: #F59E0B;">⚠️ ${stats.manualReviewCount} manual reviews</span>` : ''}
+        </div>
+      </div>
+    `;
+    
+    // Show manual review button if needed
+    if (stats.manualReviewCount > 0) {
+      addManualReviewButton();
+    }
+  } else {
+    // No customers processed yet, show helpful message
+    showProcessingStatus(`
+      👋 Welcome! Click the Customers tab to automatically process new receipts, 
+      or use "Process Customer Resolution" to process all receipts.
+    `, 'info');
+  }
+}
+
+// Add manual review button
+function addManualReviewButton() {
+  // Remove existing review button if present
+  const existingBtn = document.querySelector('.manual-review-btn');
+  if (existingBtn) existingBtn.remove();
+  
+  const reviewBtn = document.createElement('button');
+  reviewBtn.textContent = `⚠️ Review ${customerResolutionService.getStats().manualReviewCount} Items`;
+  reviewBtn.className = 'action-button manual-review-btn';
+  reviewBtn.style.backgroundColor = '#F59E0B';
+  reviewBtn.onclick = showManualReviewModal;
+  document.querySelector('.customer-controls').appendChild(reviewBtn);
+}
+
+// Legacy function - redirects to new system
+async function processCustomerResolution() {
+  await processAllReceipts(true);
+}
+
+// Fetch all receipts from Appwrite (helper function)
+async function fetchAllReceipts() {
+  const receipts = [];
+  let offset = 0;
+  const limit = 100;
+  
+  while (true) {
+    try {
+      const response = await databases.listDocuments(
+        databaseId,
+        '689d4a4b000b62bd70ca', // allreceipt collection ID
+        [
+          Appwrite.Query.limit(limit),
+          Appwrite.Query.offset(offset)
+        ]
+      );
+      
+      receipts.push(...response.documents);
+      
+      if (response.documents.length < limit) {
+        break;
+      }
+      
+      offset += limit;
+      
+      // Show progress for large datasets
+      if (offset % 500 === 0) {
+        showProcessingStatus(`Fetching receipts... ${receipts.length} loaded`, 'info');
+      }
+      
+    } catch (error) {
       console.error('Error fetching receipts:', error);
       throw new Error(`Failed to fetch receipts: ${error.message}`);
     }
@@ -145,74 +494,165 @@ async function fetchAllReceipts() {
   return receipts;
 }
 
-// Process customer resolution step
-async function processCustomerResolutionStep(receipts) {
-  let processedCount = 0;
-  const totalReceipts = receipts.length;
+// Fetch ALL receipts for reprocessing (including those with commonId)
+async function fetchAllReceiptsForReprocessing() {
+  const receipts = [];
+  let offset = 0;
+  const limit = 100;
   
-  for (const receipt of receipts) {
-    // Resolve customer and get commonId
-    const commonId = customerResolutionService.resolveCustomer(
-      receipt.customerName, 
-      receipt.storeName
-    );
-    
-    // Store commonId in receipt object for later use
-    receipt.resolvedCommonId = commonId;
-    
-    processedCount++;
-    
-    // Update status every 50 receipts
-    if (processedCount % 50 === 0) {
-      const statusDiv = document.getElementById('customerProcessingStatus');
-      statusDiv.innerHTML += `<div class="progress-status">🔄 Processed ${processedCount}/${totalReceipts} receipts...</div>`;
+  showProcessingStatus('📥 Fetching ALL receipts from database...', 'processing');
+  
+  while (true) {
+    try {
+      const response = await databases.listDocuments(
+        databaseId,
+        '689d4a4b000b62bd70ca', // allreceipt collection ID
+        [
+          Appwrite.Query.limit(limit),
+          Appwrite.Query.offset(offset),
+          Appwrite.Query.orderDesc('$createdAt')
+        ]
+      );
+      
+      receipts.push(...response.documents);
+      
+      if (response.documents.length < limit) {
+        break;
+      }
+      
+      offset += limit;
+      
+      // Show progress for large datasets every 200 receipts
+      if (offset % 200 === 0) {
+        showProcessingStatus(`📥 Fetching receipts... ${receipts.length} loaded`, 'processing');
+      }
+      
+    } catch (error) {
+      console.error('Error fetching receipts:', error);
+      throw new Error(`Failed to fetch receipts: ${error.message}`);
     }
   }
   
-  return {
-    totalCustomers: customerResolutionService.getStats().totalCustomers,
-    processedReceipts: processedCount
-  };
+  showProcessingStatus(`📥 Successfully fetched ${receipts.length} receipts`, 'success');
+  return receipts;
 }
 
-// Update Appwrite documents with commonId
-async function updateAppwriteDocuments(receipts) {
+// Enhanced processing with better progress tracking and rolling updates
+async function processReceiptsWithProgress(receipts, isFullReprocess = false) {
+  if (receipts.length === 0) return;
+  
+  const batchSize = 50;
+  let processedCount = 0;
   let updatedCount = 0;
-  let errorCount = 0;
   const totalReceipts = receipts.length;
   
-  for (const receipt of receipts) {
-    try {
-      // Only update if receipt doesn't have commonId or if it's different
-      if (!receipt.commonId || receipt.commonId !== receipt.resolvedCommonId) {
-        await databases.updateDocument(
-          databaseId,
-          '689d4a4b000b62bd70ca', // allreceipt collection ID
-          receipt.$id,
-          { commonId: receipt.resolvedCommonId }
-        );
-        updatedCount++;
-        
-        // Also update the receipt object
-        receipt.commonId = receipt.resolvedCommonId;
-      }
-    } catch (error) {
-      console.warn(`Could not update receipt ${receipt.$id}:`, error);
-      errorCount++;
-    }
+  showProcessingStatus(`🔄 Step 1: Processing ${totalReceipts} receipts in batches of ${batchSize}...`, 'processing');
+  
+  // Process receipts in batches
+  for (let i = 0; i < receipts.length; i += batchSize) {
+    const batch = receipts.slice(i, i + batchSize);
+    const batchNumber = Math.floor(i / batchSize) + 1;
+    const totalBatches = Math.ceil(receipts.length / batchSize);
     
-    // Update status every 25 receipts
-    if ((updatedCount + errorCount) % 25 === 0) {
-      const statusDiv = document.getElementById('customerProcessingStatus');
-      statusDiv.innerHTML += `<div class="progress-status">📝 Updated ${updatedCount}/${totalReceipts} documents...</div>`;
-    }
+    // Process resolution for this batch
+    const batchResults = customerResolutionService.processNewReceipts(batch);
+    processedCount += batchResults.processedCount;
+    
+    // Show progress every batch (but limited to 10 messages via rolling log)
+    const progressPercent = Math.round((processedCount / totalReceipts) * 100);
+    showProcessingStatus(
+      `🔄 Processed ${processedCount}/${totalReceipts} receipts (${progressPercent}%) - Batch ${batchNumber}/${totalBatches}`, 
+      'processing'
+    );
+    
+    // Small delay to prevent UI blocking
+    await new Promise(resolve => setTimeout(resolve, 10));
   }
   
-  return {
-    updatedCount,
-    errorCount,
-    totalReceipts
-  };
+  showProcessingStatus(`✅ Step 1 Complete: Processed ${processedCount} receipts`, 'success');
+  
+  // Get resolution stats
+  const stats = customerResolutionService.getStats();
+  showProcessingStatus(`✅ Step 2 Complete: Resolved ${stats.totalCustomers} customers`, 'success');
+  
+  // Update Appwrite documents
+  showProcessingStatus('📝 Step 3: Updating Appwrite documents...', 'processing');
+  updatedCount = await updateAllProcessedReceipts(receipts, totalReceipts);
+  
+  showProcessingStatus(`✅ Step 3 Complete: Updated ${updatedCount}/${totalReceipts} documents`, 'success');
+  
+  // Final steps
+  if (receipts.length > 0) {
+    const lastReceipt = receipts[receipts.length - 1];
+    localStorage.setItem('lastProcessedReceiptId', lastReceipt.$id);
+  }
+  
+  // Rebuild customer receipt map
+  allReceipts = receipts;
+  buildCustomerReceiptMap(allReceipts);
+  
+  // Show final completion status
+  const manualReviewCount = customerResolutionService.getManualReviewQueue().length;
+  
+  showProcessingStatus(`
+    🎉 Processing Complete! 
+    ${processedCount} receipts processed → ${stats.totalCustomers} unique customers
+    ${manualReviewCount > 0 ? `⚠️ ${manualReviewCount} items need manual review` : ''}
+  `, 'success');
+  
+  // Auto-display customers
+  await displayResolvedCustomers();
+  
+  // Update UI buttons
+  updateUIButtons();
+}
+
+// Update all processed receipts in Appwrite with progress tracking
+async function updateAllProcessedReceipts(receipts, totalCount) {
+  let updatedCount = 0;
+  let errorCount = 0;
+  const batchSize = 25; // Smaller batches for database updates
+  
+  for (let i = 0; i < receipts.length; i += batchSize) {
+    const batch = receipts.slice(i, i + batchSize);
+    
+    for (const receipt of batch) {
+      try {
+        if (receipt.resolvedCommonId && (!receipt.commonId || receipt.commonId !== receipt.resolvedCommonId)) {
+          await databases.updateDocument(
+            databaseId,
+            '689d4a4b000b62bd70ca',
+            receipt.$id,
+            { commonId: receipt.resolvedCommonId }
+          );
+          
+          receipt.commonId = receipt.resolvedCommonId;
+          updatedCount++;
+        }
+      } catch (error) {
+        console.warn(`Could not update receipt ${receipt.$id}:`, error);
+        errorCount++;
+      }
+    }
+    
+    // Show progress every 50 updates (via rolling log)
+    if ((updatedCount + errorCount) % 50 === 0 || (i + batchSize) >= receipts.length) {
+      const progressPercent = Math.round(((i + batchSize) / totalCount) * 100);
+      showProcessingStatus(
+        `📝 Updated ${updatedCount}/${totalCount} documents (${progressPercent}%)${errorCount > 0 ? ` - ${errorCount} errors` : ''}`,
+        'processing'
+      );
+    }
+    
+    // Small delay between batches
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  
+  if (errorCount > 0) {
+    showProcessingStatus(`⚠️ Update completed with ${errorCount} errors`, 'info');
+  }
+  
+  return updatedCount;
 }
 
 // Build customer receipt map
@@ -303,7 +743,7 @@ async function viewCustomerHistory(commonId) {
     <div class="customer-history-modal">
       <div class="modal-header">
         <h2>${customer.primaryName || 'Unknown Customer'}</h2>
-        <p class="customer-store">${customer.primaryStore || 'No Store'}</p>
+
         <button class="close-modal" onclick="closeModal()">×</button>
       </div>
       
@@ -358,10 +798,7 @@ async function viewCustomerDetails(commonId) {
               <span class="info-label">Primary Name:</span>
               <span class="info-value">${customer.primaryName || 'Unknown'}</span>
             </div>
-            <div class="info-row">
-              <span class="info-label">Primary Store:</span>
-              <span class="info-value">${customer.primaryStore || 'No Store'}</span>
-            </div>
+
             <div class="info-row">
               <span class="info-label">Customer ID:</span>
               <span class="info-value">${customer.commonId}</span>
@@ -435,19 +872,25 @@ async function viewCustomerDetails(commonId) {
 // Refresh customer data
 async function refreshCustomerData() {
   try {
-    // Clear existing data
-    allReceipts = [];
-    customerReceiptsMap.clear();
+    showProcessingStatus('🔄 Refreshing customer data...', 'processing');
     
-    // Re-fetch and reprocess
-    await processCustomerResolution();
+    // Check for any new unprocessed receipts
+    const needsProcessing = await checkForUnprocessedReceipts();
     
-    // Refresh display
-    await displayResolvedCustomers();
+    if (needsProcessing.hasUnprocessed) {
+      // Process new receipts first
+      await processUnprocessedReceipts(needsProcessing.unprocessedReceipts);
+    } else {
+      // Just refresh the display
+      allReceipts = await fetchAllProcessedReceipts();
+      buildCustomerReceiptMap(allReceipts);
+      await displayResolvedCustomers();
+      showProcessingStatus('✅ Customer data refreshed successfully!', 'success');
+    }
     
   } catch (error) {
     console.error('Error refreshing customer data:', error);
-    alert(`Error refreshing data: ${error.message}`);
+    showProcessingStatus(`❌ Error refreshing data: ${error.message}`, 'error');
   }
 }
 
@@ -457,14 +900,21 @@ function clearCustomerData() {
     customerResolutionService.clearData();
     allReceipts = [];
     customerReceiptsMap.clear();
+    localStorage.removeItem('lastProcessedReceiptId');
     
     // Reset UI
     document.getElementById('customerProcessingStatus').innerHTML = '';
     document.getElementById('customersList').innerHTML = '';
     document.getElementById('viewCustomersBtn').style.display = 'none';
     document.getElementById('refreshCustomersBtn').style.display = 'none';
+    document.getElementById('clearCustomersBtn').style.display = 'none';
+    document.getElementById('processCustomersBtn').textContent = '🔄 Process Customer Resolution';
     
-    alert('Customer data cleared successfully.');
+    // Remove manual review button
+    const reviewBtn = document.querySelector('.manual-review-btn');
+    if (reviewBtn) reviewBtn.remove();
+    
+    showProcessingStatus('✅ Customer data cleared. New receipts will be auto-processed when you visit the Customers tab.', 'success');
   }
 }
 
@@ -507,4 +957,140 @@ if (typeof window !== 'undefined') {
   window.viewCustomerHistory = viewCustomerHistory;
   window.viewCustomerDetails = viewCustomerDetails;
   window.closeModal = closeModal;
+  window.showManualReviewModal = showManualReviewModal;
+  window.resolveManualReviewItem = resolveManualReviewItem;
+}
+
+// Manual review functionality
+function showManualReviewModal() {
+  const queue = customerResolutionService.getManualReviewQueue();
+  
+  if (queue.length === 0) {
+    alert('No items in manual review queue.');
+    return;
+  }
+  
+  let modalContent = `
+    <div class="manual-review-modal">
+      <div class="modal-header">
+        <h2>Manual Review Queue (${queue.length} items)</h2>
+        <button class="close-modal" onclick="closeModal()">×</button>
+      </div>
+      
+      <div class="modal-body">
+        <p>These customer-store combinations need manual review due to potential conflicts:</p>
+        
+        <div class="review-items">
+  `;
+  
+  queue.forEach((item, index) => {
+    const candidates = item.candidates || [];
+    
+    modalContent += `
+      <div class="review-item" data-alias-key="${item.aliasKey}">
+        <div class="review-header">
+          <h4>Item ${index + 1}: ${item.customerName} at ${item.storeName}</h4>
+          <span class="review-timestamp">${new Date(item.timestamp).toLocaleString()}</span>
+        </div>
+        
+        <div class="review-options">
+          <p><strong>Choose action:</strong></p>
+          
+          <div class="option-group">
+            <input type="radio" id="new_${index}" name="resolution_${index}" value="new">
+            <label for="new_${index}">Create new customer</label>
+          </div>
+          
+          ${candidates.map((candidateId, candIndex) => {
+            const candidate = customerResolutionService.getCustomerInfo(candidateId);
+            return `
+              <div class="option-group">
+                <input type="radio" id="existing_${index}_${candIndex}" name="resolution_${index}" value="${candidateId}">
+                <label for="existing_${index}_${candIndex}">
+                  Merge with: ${candidate ? candidate.primaryName : candidateId}
+                  ${candidate ? `(${candidate.aliases.length} aliases)` : ''}
+                </label>
+              </div>
+            `;
+          }).join('')}
+          
+          <button class="resolve-btn" onclick="resolveManualReviewItem('${item.aliasKey}', ${index})">
+            Resolve This Item
+          </button>
+        </div>
+      </div>
+    `;
+  });
+  
+  modalContent += `
+        </div>
+        
+        <div class="review-actions">
+          <button class="action-button" onclick="closeModal()">Close</button>
+          <button class="action-button" onclick="refreshAfterReview()">Refresh After Changes</button>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  showModal(modalContent);
+}
+
+function resolveManualReviewItem(aliasKey, itemIndex) {
+  const selectedOption = document.querySelector(`input[name="resolution_${itemIndex}"]:checked`);
+  
+  if (!selectedOption) {
+    alert('Please select an option before resolving.');
+    return;
+  }
+  
+  const selectedValue = selectedOption.value;
+  
+  try {
+    if (selectedValue === 'new') {
+      // User wants to create a new customer - remove from queue
+      const queue = customerResolutionService.getManualReviewQueue();
+      const item = queue.find(item => item.aliasKey === aliasKey);
+      
+      if (item) {
+        // Create new customer
+        const commonId = customerResolutionService.resolveCustomer(item.customerName, item.storeName);
+        alert(`Created new customer with ID: ${commonId}`);
+      }
+    } else {
+      // User wants to merge with existing customer
+      customerResolutionService.resolveManualReview(aliasKey, selectedValue);
+      alert('Customer merged successfully!');
+    }
+    
+    // Remove this item from the modal
+    const reviewItem = document.querySelector(`[data-alias-key="${aliasKey}"]`);
+    if (reviewItem) {
+      reviewItem.remove();
+    }
+    
+    // Update queue count in modal header
+    const remainingItems = document.querySelectorAll('.review-item').length;
+    const modalHeader = document.querySelector('.manual-review-modal .modal-header h2');
+    if (modalHeader) {
+      modalHeader.textContent = `Manual Review Queue (${remainingItems} items)`;
+    }
+    
+    // If no more items, close modal
+    if (remainingItems === 0) {
+      closeModal();
+      alert('All manual review items resolved!');
+      checkCustomerStatus(); // Refresh status
+    }
+    
+  } catch (error) {
+    console.error('Error resolving manual review item:', error);
+    alert(`Error: ${error.message}`);
+  }
+}
+
+function refreshAfterReview() {
+  closeModal();
+  checkCustomerStatus();
+  displayResolvedCustomers();
 }

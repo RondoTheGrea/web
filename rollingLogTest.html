@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rolling Log Test - Customer Resolution System</title>
+    <link rel="stylesheet" href="customerStyles.css">
+    <script src="https://cdn.jsdelivr.net/npm/appwrite@13.0.1"></script>
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .test-controls {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .test-button {
+            background-color: #265DAB;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 0 10px;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+        .test-button:hover {
+            background-color: #1e4b8f;
+            transform: translateY(-1px);
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🧪 Rolling Log Test</h1>
+        <p>This test demonstrates the rolling log functionality that keeps only the last 10 status messages.</p>
+        
+        <div class="test-controls">
+            <button class="test-button" onclick="testNormalUpdates()">📝 Test Normal Updates</button>
+            <button class="test-button" onclick="testProgressUpdates()">🔄 Test Progress Updates</button>
+            <button class="test-button" onclick="testMixedUpdates()">🎯 Test Mixed Updates</button>
+            <button class="test-button" onclick="testLargeVolume()">🚀 Test Large Volume (20 updates)</button>
+            <button class="test-button" onclick="clearStatus()">🗑️ Clear Status</button>
+        </div>
+        
+        <div id="customerProcessingStatus">
+            <div class="step-status">📊 Ready to test rolling log functionality. Click a test button above!</div>
+        </div>
+        
+        <div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 8px;">
+            <h3>📋 Test Information:</h3>
+            <ul>
+                <li><strong>Rolling Log:</strong> Only shows last 10 messages maximum</li>
+                <li><strong>Progress Updates:</strong> Replace previous progress message instead of adding new ones</li>
+                <li><strong>Auto-scroll:</strong> Automatically scrolls to bottom for new messages</li>
+                <li><strong>Visual Enhancement:</strong> Latest message gets subtle highlighting</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Replicate the showProcessingStatus function from customerDashboard.js
+        function showProcessingStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('customerProcessingStatus');
+            const className = type === 'error' ? 'error' : 
+                             type === 'success' ? 'step-success' :
+                             type === 'processing' ? 'processing-status' : 'step-status';
+            
+            // Get current messages, split by div elements
+            let currentHTML = statusDiv.innerHTML;
+            let messages = [];
+            
+            if (currentHTML.trim()) {
+                // Extract existing messages from divs
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = currentHTML;
+                const existingDivs = tempDiv.querySelectorAll('div');
+                messages = Array.from(existingDivs).map(div => ({
+                    content: div.innerHTML,
+                    className: div.className
+                }));
+            }
+            
+            // Add new message
+            messages.push({
+                content: message,
+                className: className
+            });
+            
+            // Keep only last 10 messages
+            if (messages.length > 10) {
+                messages = messages.slice(-10);
+            }
+            
+            // Rebuild status div
+            statusDiv.innerHTML = messages.map(msg => 
+                `<div class="${msg.className}">${msg.content}</div>`
+            ).join('');
+            
+            // Auto-scroll to bottom
+            statusDiv.scrollTop = statusDiv.scrollHeight;
+        }
+
+        // Test functions
+        function testNormalUpdates() {
+            clearStatus();
+            showProcessingStatus('📝 Starting normal update test...', 'info');
+            
+            const messages = [
+                '🔍 Checking database connection...',
+                '📥 Fetching receipt data...',
+                '⚙️ Initializing processing engine...',
+                '🔄 Processing customer resolution...',
+                '✅ Processing completed successfully!'
+            ];
+            
+            messages.forEach((message, index) => {
+                setTimeout(() => {
+                    const type = index === messages.length - 1 ? 'success' : 'info';
+                    showProcessingStatus(message, type);
+                }, (index + 1) * 800);
+            });
+        }
+
+        function testProgressUpdates() {
+            clearStatus();
+            showProcessingStatus('🔄 Starting progress update test...', 'info');
+            
+            let processed = 0;
+            const total = 500;
+            const interval = setInterval(() => {
+                processed += 25;
+                
+                if (processed <= total) {
+                    const percent = Math.round((processed / total) * 100);
+                    showProcessingStatus(`🔄 Processed ${processed}/${total} receipts (${percent}%)...`, 'processing');
+                } else {
+                    clearInterval(interval);
+                    showProcessingStatus('✅ All receipts processed successfully!', 'success');
+                }
+            }, 300);
+        }
+
+        function testMixedUpdates() {
+            clearStatus();
+            showProcessingStatus('🎯 Starting mixed update test...', 'info');
+            
+            const updates = [
+                { message: '📥 Fetching receipts...', type: 'info' },
+                { message: '🔄 Processed 50/200 receipts (25%)...', type: 'processing' },
+                { message: '🔄 Processed 100/200 receipts (50%)...', type: 'processing' },
+                { message: '⚠️ Warning: Found duplicate customer names', type: 'info' },
+                { message: '🔄 Processed 150/200 receipts (75%)...', type: 'processing' },
+                { message: '🔄 Processed 200/200 receipts (100%)...', type: 'processing' },
+                { message: '📝 Updating database documents...', type: 'info' },
+                { message: '✅ Step 1 Complete: 93 customers resolved', type: 'success' },
+                { message: '✅ Step 2 Complete: All documents updated', type: 'success' },
+                { message: '🎉 Processing completed successfully!', type: 'success' }
+            ];
+            
+            updates.forEach((update, index) => {
+                setTimeout(() => {
+                    showProcessingStatus(update.message, update.type);
+                }, (index + 1) * 600);
+            });
+        }
+
+        function testLargeVolume() {
+            clearStatus();
+            showProcessingStatus('🚀 Starting large volume test (20 messages)...', 'info');
+            
+            for (let i = 1; i <= 20; i++) {
+                setTimeout(() => {
+                    const type = i % 5 === 0 ? 'success' : i % 3 === 0 ? 'processing' : 'info';
+                    showProcessingStatus(`📊 Message ${i}/20 - This should demonstrate rolling log functionality`, type);
+                    
+                    if (i === 20) {
+                        setTimeout(() => {
+                            showProcessingStatus('✅ Large volume test complete! Notice only last 10 messages are shown.', 'success');
+                        }, 500);
+                    }
+                }, i * 200);
+            }
+        }
+
+        function clearStatus() {
+            const statusDiv = document.getElementById('customerProcessingStatus');
+            statusDiv.innerHTML = '<div class="step-status">📊 Status cleared. Ready for new test.</div>';
+        }
+    </script>
+</body>
+</html>

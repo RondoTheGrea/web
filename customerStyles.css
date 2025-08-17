@@ -34,11 +34,7 @@
   transform: none;
 }
 
-/* Customer Processing Status */
-#customerProcessingStatus {
-  margin: 20px 0;
-}
-
+/* Processing Status Styles */
 .processing-status {
   background-color: #f0f9ff;
   border: 1px solid #0ea5e9;
@@ -46,6 +42,13 @@
   padding: 15px;
   margin: 15px 0;
   font-weight: 500;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.7; }
+  100% { opacity: 1; }
 }
 
 .step-status {
@@ -80,6 +83,68 @@
   background-color: #ecfdf5;
   border: 2px solid #10b981;
   border-radius: 8px;
+  padding: 15px;
+  margin: 15px 0;
+  font-weight: 600;
+  color: #065f46;
+}
+
+.error {
+  background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+  color: white;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin: 8px 0;
+  border-left: 4px solid #F87171;
+  font-weight: 500;
+}
+
+/* Enhanced Status container with rolling log functionality */
+#customerProcessingStatus {
+  max-height: 400px;
+  overflow-y: auto;
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 16px 0;
+  font-family: 'Poppins', sans-serif;
+  scrollbar-width: thin;
+  scrollbar-color: #CBD5E1 #F1F5F9;
+}
+
+#customerProcessingStatus::-webkit-scrollbar {
+  width: 6px;
+}
+
+#customerProcessingStatus::-webkit-scrollbar-track {
+  background: #F1F5F9;
+  border-radius: 3px;
+}
+
+#customerProcessingStatus::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 3px;
+}
+
+#customerProcessingStatus::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Enhanced status messages with better spacing */
+#customerProcessingStatus > div {
+  margin-bottom: 4px;
+  transition: all 0.3s ease;
+}
+
+#customerProcessingStatus > div:last-child {
+  margin-bottom: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transform: scale(1.02);
+}
+
+/* Final status content styles */
+.final-status-content {
   padding: 20px;
   margin: 20px 0;
   text-align: center;
@@ -114,9 +179,19 @@
 }
 
 .status-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-top: 10px;
   font-size: 14px;
-  opacity: 0.8;
-  margin-left: 10px;
+  font-weight: normal;
+}
+
+.status-details span {
+  background-color: #e8f4fd;
+  padding: 6px 12px;
+  border-radius: 15px;
+  color: #1e40af;
 }
 
 .error {
@@ -126,6 +201,43 @@
   padding: 15px;
   margin: 15px 0;
   color: #991b1b;
+}
+
+.manual-review-notice {
+  background-color: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  padding: 12px;
+  margin: 10px 0;
+  color: #92400e;
+  font-weight: 500;
+}
+
+/* Auto-processing indicator */
+.auto-processing-indicator {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: #0ea5e9;
+  color: white;
+  padding: 10px 15px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 1001;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 /* Customer Header */
@@ -205,11 +317,7 @@
   color: #1f2937;
 }
 
-.customer-store {
-  margin: 0;
-  color: #6b7280;
-  font-size: 14px;
-}
+
 
 .customer-stats {
   display: grid;
@@ -367,11 +475,7 @@
   font-size: 20px;
 }
 
-.modal-header .customer-store {
-  margin: 5px 0 0 0;
-  opacity: 0.9;
-  font-size: 14px;
-}
+
 
 .close-modal {
   background: none;
@@ -644,33 +748,142 @@
   color: #10b981;
 }
 
-/* Responsive Design */
+/* Manual Review Modal Styles */
+.manual-review-modal {
+  max-width: 800px;
+  width: 90vw;
+}
+
+.manual-review-modal .modal-body {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.review-items {
+  margin: 20px 0;
+}
+
+.review-item {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.review-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.review-header h4 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 16px;
+}
+
+.review-timestamp {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.review-options {
+  margin-top: 15px;
+}
+
+.option-group {
+  display: flex;
+  align-items: center;
+  margin: 10px 0;
+  padding: 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.option-group:hover {
+  background-color: #f3f4f6;
+}
+
+.option-group input[type="radio"] {
+  margin-right: 10px;
+  margin-left: 0;
+}
+
+.option-group label {
+  cursor: pointer;
+  font-weight: 500;
+  color: #374151;
+}
+
+.resolve-btn {
+  background-color: #10b981;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  margin-top: 15px;
+  transition: background-color 0.2s;
+}
+
+.resolve-btn:hover {
+  background-color: #059669;
+}
+
+.review-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.manual-review-notice {
+  background-color: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  padding: 12px;
+  margin: 10px 0;
+  color: #92400e;
+  font-weight: 500;
+}
+
+/* Enhanced status details styling */
+.status-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: normal;
+}
+
+.status-details span {
+  background-color: #e8f4fd;
+  padding: 6px 12px;
+  border-radius: 15px;
+  color: #1e40af;
+}
+
+/* Responsive design for manual review */
 @media (max-width: 768px) {
-  .customers-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .customer-stats {
-    grid-template-columns: 1fr;
-  }
-  
-  .customers-summary {
+  .review-header {
     flex-direction: column;
-    gap: 10px;
-  }
-  
-  .modal-overlay > div {
-    max-width: 95vw;
-    max-height: 95vh;
-  }
-  
-  .item-row {
-    grid-template-columns: 1fr;
+    align-items: flex-start;
     gap: 5px;
-    text-align: center;
   }
   
-  .summary-stats {
-    grid-template-columns: 1fr;
+  .review-actions {
+    flex-direction: column;
+  }
+  
+  .manual-review-modal {
+    width: 95vw;
   }
 }
