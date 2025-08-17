@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Resolution Service Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .test-result {
+            background: #f9f9f9;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        button {
+            background: #007cba;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #005a87;
+        }
+        input {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 200px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .stat-card {
+            background: #e8f4fd;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+        }
+        .manual-review {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Enhanced Customer Resolution Service Test</h1>
+        <p>Test the new customer resolution system with store validation and incremental processing.</p>
+    </div>
+
+    <div class="container">
+        <div class="test-section">
+            <h3>Single Customer Resolution</h3>
+            <input type="text" id="customerName" placeholder="Customer Name" value="John Smith">
+            <input type="text" id="storeName" placeholder="Store Name" value="Target">
+            <button onclick="testSingleResolution()">Resolve Customer</button>
+            <div id="singleResult" class="test-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Batch Receipt Processing</h3>
+            <button onclick="testBatchProcessing()">Process Sample Receipts</button>
+            <button onclick="testIncrementalProcessing()">Test Incremental Processing</button>
+            <div id="batchResult" class="test-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Similarity Testing</h3>
+            <input type="text" id="text1" placeholder="Text 1" value="John Smith">
+            <input type="text" id="text2" placeholder="Text 2" value="Jon Smith">
+            <button onclick="testSimilarity()">Test Similarity</button>
+            <div id="similarityResult" class="test-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Data Management</h3>
+            <button onclick="showStats()">Show Statistics</button>
+            <button onclick="showManualReview()">Show Manual Review Queue</button>
+            <button onclick="exportData()">Export Data</button>
+            <button onclick="clearAllData()">Clear All Data</button>
+            <div id="dataResult" class="test-result"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div id="statsContainer"></div>
+    </div>
+
+    <div class="container">
+        <div id="manualReviewContainer"></div>
+    </div>
+
+    <script src="customerResolutionService.js"></script>
+    <script>
+        // Initialize the service
+        const resolutionService = new CustomerResolutionService();
+
+        function testSingleResolution() {
+            const customerName = document.getElementById('customerName').value;
+            const storeName = document.getElementById('storeName').value;
+            
+            try {
+                const start = performance.now();
+                const commonId = resolutionService.resolveCustomer(customerName, storeName);
+                const end = performance.now();
+                
+                const customer = resolutionService.getCustomerInfo(commonId);
+                
+                document.getElementById('singleResult').innerHTML = `
+                    <strong>Resolution Result:</strong><br>
+                    Customer: ${customerName}<br>
+                    Store: ${storeName}<br>
+                    Common ID: ${commonId}<br>
+                    Primary Name: ${customer.primaryName}<br>
+                    Aliases: ${customer.aliases.length}<br>
+                    Processing Time: ${(end - start).toFixed(2)}ms<br>
+                    <pre>${JSON.stringify(customer, null, 2)}</pre>
+                `;
+            } catch (error) {
+                document.getElementById('singleResult').innerHTML = `
+                    <div class="error">Error: ${error.message}</div>
+                `;
+            }
+        }
+
+        function testBatchProcessing() {
+            const sampleReceipts = [
+                { id: '1', customerName: 'John Smith', storeName: 'Target', date: '2025-08-15', total: 45.67 },
+                { id: '2', customerName: 'Jon Smith', storeName: 'Target', date: '2025-08-16', total: 23.45 },
+                { id: '3', customerName: 'John Smith', storeName: 'Walmart', date: '2025-08-17', total: 67.89 },
+                { id: '4', customerName: 'Jane Doe', storeName: 'Target', date: '2025-08-15', total: 12.34 },
+                { id: '5', customerName: 'Jane Doe', storeName: 'CVS Pharmacy', date: '2025-08-16', total: 8.99 },
+                { id: '6', customerName: 'Michael Johnson', storeName: '7-Eleven', date: '2025-08-17', total: 15.67 },
+                { id: '7', customerName: 'Mike Johnson', storeName: '7 Eleven', date: '2025-08-17', total: 22.33 }
+            ];
+
+            try {
+                const start = performance.now();
+                const results = resolutionService.processNewReceipts(sampleReceipts);
+                const end = performance.now();
+                
+                document.getElementById('batchResult').innerHTML = `
+                    <strong>Batch Processing Results:</strong><br>
+                    Processed: ${results.processedCount} receipts<br>
+                    Processing Time: ${(end - start).toFixed(2)}ms<br>
+                    Last Processed Date: ${results.lastProcessedDate}<br>
+                    <pre>${JSON.stringify(results.results, null, 2)}</pre>
+                `;
+                
+                showStats();
+            } catch (error) {
+                document.getElementById('batchResult').innerHTML = `
+                    <div class="error">Error: ${error.message}</div>
+                `;
+            }
+        }
+
+        function testIncrementalProcessing() {
+            const newReceipts = [
+                { id: '8', customerName: 'John Smith', storeName: 'Target', date: '2025-08-18', total: 89.12 },
+                { id: '9', customerName: 'Sarah Wilson', storeName: 'Best Buy', date: '2025-08-18', total: 156.78 }
+            ];
+
+            try {
+                const start = performance.now();
+                const results = resolutionService.processNewReceipts(newReceipts);
+                const end = performance.now();
+                
+                document.getElementById('batchResult').innerHTML = `
+                    <strong>Incremental Processing Results:</strong><br>
+                    Processed: ${results.processedCount} new receipts<br>
+                    Processing Time: ${(end - start).toFixed(2)}ms<br>
+                    <pre>${JSON.stringify(results.results, null, 2)}</pre>
+                `;
+                
+                showStats();
+            } catch (error) {
+                document.getElementById('batchResult').innerHTML = `
+                    <div class="error">Error: ${error.message}</div>
+                `;
+            }
+        }
+
+        function testSimilarity() {
+            const text1 = document.getElementById('text1').value;
+            const text2 = document.getElementById('text2').value;
+            
+            const result = resolutionService.testSimilarity(text1, text2);
+            
+            document.getElementById('similarityResult').innerHTML = `
+                <strong>Similarity Analysis:</strong><br>
+                Text 1: "${text1}"<br>
+                Text 2: "${text2}"<br>
+                Jaro-Winkler: ${result.jaroWinkler.toFixed(4)}<br>
+                Levenshtein: ${result.levenshtein}<br>
+                Strong Match: ${result.strongMatch}<br>
+                Borderline Match: ${result.borderlineMatch}<br>
+                
+                <strong>Thresholds:</strong><br>
+                Strong: ${resolutionService.thresholds.NAME_STRONG}<br>
+                Border: ${resolutionService.thresholds.NAME_BORDER}<br>
+                Levenshtein Limit: ${resolutionService.thresholds.LEV_SMALL}
+            `;
+        }
+
+        function showStats() {
+            const stats = resolutionService.getStats();
+            const cacheStats = resolutionService.getCacheStats();
+            
+            document.getElementById('statsContainer').innerHTML = `
+                <h3>System Statistics</h3>
+                <div class="stats">
+                    <div class="stat-card">
+                        <h4>Total Customers</h4>
+                        <div style="font-size: 24px; font-weight: bold;">${stats.totalCustomers}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Total Aliases</h4>
+                        <div style="font-size: 24px; font-weight: bold;">${stats.totalAliases}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Manual Review Queue</h4>
+                        <div style="font-size: 24px; font-weight: bold;">${stats.manualReviewCount}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Avg Aliases/Customer</h4>
+                        <div style="font-size: 24px; font-weight: bold;">${stats.avgAliasesPerCustomer.toFixed(1)}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Cache Efficiency</h4>
+                        <div style="font-size: 24px; font-weight: bold;">${cacheStats.cacheEfficiency.toFixed(1)}%</div>
+                    </div>
+                    <div class="stat-card">
+                        <h4>Last Processed</h4>
+                        <div style="font-size: 14px;">${stats.lastProcessedDate ? new Date(stats.lastProcessedDate).toLocaleString() : 'Never'}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function showManualReview() {
+            const queue = resolutionService.getManualReviewQueue();
+            
+            if (queue.length === 0) {
+                document.getElementById('manualReviewContainer').innerHTML = `
+                    <h3>Manual Review Queue</h3>
+                    <p>No items in manual review queue.</p>
+                `;
+                return;
+            }
+            
+            let html = '<h3>Manual Review Queue</h3>';
+            
+            queue.forEach((item, index) => {
+                html += `
+                    <div class="manual-review">
+                        <strong>Item ${index + 1}:</strong><br>
+                        Customer: ${item.customerName}<br>
+                        Store: ${item.storeName}<br>
+                        Alias Key: ${item.aliasKey}<br>
+                        Candidates: ${item.candidates.length}<br>
+                        Timestamp: ${new Date(item.timestamp).toLocaleString()}
+                    </div>
+                `;
+            });
+            
+            document.getElementById('manualReviewContainer').innerHTML = html;
+        }
+
+        function exportData() {
+            const data = resolutionService.exportData();
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `customer-data-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            document.getElementById('dataResult').innerHTML = 'Data exported successfully!';
+        }
+
+        function clearAllData() {
+            if (confirm('Are you sure you want to clear all customer data? This cannot be undone.')) {
+                resolutionService.clearData();
+                document.getElementById('dataResult').innerHTML = 'All data cleared!';
+                showStats();
+                document.getElementById('manualReviewContainer').innerHTML = '';
+            }
+        }
+
+        // Initialize display
+        showStats();
+    </script>
+</body>
+</html>
