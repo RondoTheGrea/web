@@ -172,7 +172,8 @@ function createCustomerCard(customer, stats) {
   
   card.innerHTML = `
     <div class="customer-header">
-      <h3 class="customer-name">${customer.primaryStore || 'Unknown Store'} - ${customer.primaryName || 'Unknown Customer'}</h3>
+      <h2 class="store-name">${customer.primaryStore || 'Unknown Store'}</h2>
+      <h3 class="customer-name">${customer.primaryName || 'Unknown Customer'}</h3>
     </div>
     
     <div class="customer-stats">

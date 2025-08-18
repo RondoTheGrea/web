@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Card Layout Test</title>
+    <link rel="stylesheet" href="customerStyles.css">
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .customers-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🏪 Customer Card Layout Test</h1>
+        <p>Testing the new layout with <strong>Store Name (large)</strong> and <strong>Customer Name (smaller)</strong> below it.</p>
+        
+        <div class="customers-grid" id="testGrid">
+            <!-- Cards will be generated here -->
+        </div>
+    </div>
+
+    <script src="customerUtils.js"></script>
+    <script>
+        // Test data
+        const testCustomers = [
+            {
+                commonId: 'test1',
+                primaryStore: '7-Eleven Store #1234',
+                primaryName: 'John Smith',
+                totalReceipts: 15,
+                totalSpent: 245.50,
+                firstOrder: '2024-01-15',
+                lastOrder: '2024-08-10'
+            },
+            {
+                commonId: 'test2',
+                primaryStore: 'McDonald\'s Main St',
+                primaryName: 'Sarah Johnson',
+                totalReceipts: 8,
+                totalSpent: 89.75,
+                firstOrder: '2024-03-22',
+                lastOrder: '2024-08-05'
+            },
+            {
+                commonId: 'test3',
+                primaryStore: 'Walmart Supercenter',
+                primaryName: 'Mike Wilson',
+                totalReceipts: 23,
+                totalSpent: 456.80,
+                firstOrder: '2024-02-10',
+                lastOrder: '2024-08-12'
+            },
+            {
+                commonId: 'test4',
+                primaryStore: 'Target Store',
+                primaryName: 'Emily Davis',
+                totalReceipts: 12,
+                totalSpent: 298.30,
+                firstOrder: '2024-04-05',
+                lastOrder: '2024-08-08'
+            }
+        ];
+
+        // Generate test stats
+        function generateTestStats(customer) {
+            return {
+                totalReceipts: customer.totalReceipts,
+                totalSpent: customer.totalSpent,
+                averageOrder: customer.totalSpent / customer.totalReceipts,
+                firstOrder: customer.firstOrder,
+                lastOrder: customer.lastOrder,
+                totalReturns: 0,
+                favoriteItems: [],
+                paymentMethods: []
+            };
+        }
+
+        // Generate test cards
+        function generateTestCards() {
+            const grid = document.getElementById('testGrid');
+            
+            testCustomers.forEach(customer => {
+                const stats = generateTestStats(customer);
+                const card = customerUtils.createCustomerCard(customer, stats);
+                grid.appendChild(card);
+            });
+        }
+
+        // Generate cards when page loads
+        document.addEventListener('DOMContentLoaded', generateTestCards);
+    </script>
+</body>
+</html>

@@ -783,8 +783,10 @@ async function viewCustomerHistory(commonId) {
   const modalContent = `
     <div class="customer-history-modal">
       <div class="modal-header">
-        <h2>${customer.primaryStore || 'Unknown Store'} - ${customer.primaryName || 'Unknown Customer'}</h2>
-
+        <div class="modal-title">
+          <h2>${customer.primaryStore || 'Unknown Store'}</h2>
+          <h3>${customer.primaryName || 'Unknown Customer'}</h3>
+        </div>
         <button class="close-modal" onclick="closeModal()">×</button>
       </div>
       
