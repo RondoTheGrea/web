@@ -6,15 +6,43 @@ let allReceipts = [];
 let customerReceiptsMap = new Map(); // commonId -> array of receipts
 let isProcessing = false;
 let autoProcessingEnabled = true;
+let optimizedProcessor; // Add optimized batch processor
+let freeTierProcessor; // Add free tier processor
 
 // Initialize customer dashboard
 function initCustomerDashboard() {
   customerResolutionService = new CustomerResolutionService();
   
+  // Initialize both processors - check if dependencies are available
+  if (typeof databases !== 'undefined' && typeof databaseId !== 'undefined') {
+    optimizedProcessor = new OptimizedBatchProcessor(databases, databaseId, '68a30d780012b7b77108');
+    freeTierProcessor = new FreeTierOptimizedProcessor(databases, databaseId, '68a30d780012b7b77108');
+    
+    // Show free tier warning
+    showFreeTierWarning();
+    
+  } else {
+    console.warn('Databases or databaseId not available yet - will initialize later');
+    // Retry after a short delay
+    setTimeout(() => {
+      if (typeof databases !== 'undefined' && typeof databaseId !== 'undefined') {
+        optimizedProcessor = new OptimizedBatchProcessor(databases, databaseId, '68a30d780012b7b77108');
+        freeTierProcessor = new FreeTierOptimizedProcessor(databases, databaseId, '68a30d780012b7b77108');
+        showFreeTierWarning();
+        console.log('Processors initialized successfully');
+      }
+    }, 500);
+  }
+  
+  // Load existing data from memory/localStorage
+  loadExistingData();
+  
   // Add event listeners
-  document.getElementById('processCustomersBtn').addEventListener('click', () => processAllReceipts(true));
+  document.getElementById('processCustomersBtn').addEventListener('click', () => {
+    console.log('Process button clicked!');
+    processAllReceipts(true);
+  });
   document.getElementById('viewCustomersBtn').addEventListener('click', displayResolvedCustomers);
-  document.getElementById('refreshCustomersBtn').addEventListener('click', refreshCustomerData);
   document.getElementById('clearCustomersBtn').addEventListener('click', clearCustomerData);
   
   // Check initial status
@@ -22,6 +50,50 @@ function initCustomerDashboard() {
   
   // Set up tab change listener for auto-processing
   setupAutoProcessing();
+}
+
+// Show free tier warning and rate limit status
+function showFreeTierWarning() {
+  if (!freeTierProcessor) return;
+  
+  const status = freeTierProcessor.getRateLimitStatus();
+  const estimate = freeTierProcessor.estimateFreeTierProcessingTime(5000);
+  
+  showProcessingStatus(
+    `⚠️ FREE TIER DETECTED: Appwrite limits you to ${status.hourlyLimit} requests/hour. ` +
+    `Currently used: ${status.requestsUsed}/${status.hourlyLimit}. ` +
+    `Processing 5000 receipts may take ${estimate.estimatedHours}+ hours.`,
+    'warning'
+  );
+  
+  if (estimate.exceedsHourlyLimit) {
+    showProcessingStatus(
+      `💡 RECOMMENDATION: ${estimate.recommendedApproach}. Consider upgrading to Pro ($15/month) for unlimited requests.`,
+      'info'
+    );
+  }
+}
+
+// Load existing customer and receipt data from memory/localStorage
+async function loadExistingData() {
+  try {
+    // Load receipts from cache
+    await loadReceiptsFromMemory();
+    
+    // The customer resolution service should already have customer data in localStorage
+    const stats = customerResolutionService.getStats();
+    
+    if (stats.totalCustomers > 0) {
+      console.log(`Loaded existing data: ${stats.totalCustomers} customers, ${allReceipts.length} receipts`);
+      
+      // Build customer receipt map if we have receipts
+      if (allReceipts.length > 0) {
+        buildCustomerReceiptMap(allReceipts);
+      }
+    }
+  } catch (error) {
+    console.warn('Error loading existing data:', error);
+  }
 }
 
 // Set up automatic processing when Customers tab is accessed
@@ -37,7 +109,7 @@ function setupAutoProcessing() {
   }
 }
 
-// Handle when customers tab is clicked
+// Handle when customers tab is clicked - Date-based incremental processing
 async function handleCustomersTabClick() {
   if (isProcessing) {
     console.log('Processing already in progress, skipping auto-process');
@@ -45,22 +117,264 @@ async function handleCustomersTabClick() {
   }
   
   try {
-    // Check if we need to process any receipts
-    const needsProcessing = await checkForUnprocessedReceipts();
+    // First, always load and display existing customers from localStorage
+    const stats = customerResolutionService.getStats();
     
-    if (needsProcessing.hasUnprocessed) {
-      console.log(`Found ${needsProcessing.count} unprocessed receipts, starting auto-processing...`);
-      await processUnprocessedReceipts(needsProcessing.unprocessedReceipts);
+    if (stats.totalCustomers > 0) {
+      console.log(`Found ${stats.totalCustomers} customers in localStorage, displaying...`);
+      
+      // Load receipts from localStorage
+      await loadReceiptsFromMemory();
+      
+      // Display customers immediately from memory
+      await displayResolvedCustomers();
+    }
+    
+    // Get the last customers tab visit date
+    const lastCustomersTabVisit = localStorage.getItem('lastCustomersTabVisit');
+    const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    
+    let startDate = null;
+    if (lastCustomersTabVisit) {
+      startDate = lastCustomersTabVisit;
+      console.log(`Last visited customers tab on: ${startDate}, checking for receipts since then...`);
     } else {
-      console.log('All receipts are up to date');
-      // Just refresh the display if everything is current
-      if (customerResolutionService.getStats().totalCustomers > 0) {
-        await displayResolvedCustomers();
+      console.log('First time visiting customers tab, will process all receipts if none exist');
+    }
+    
+    // Update the last visit date immediately
+    localStorage.setItem('lastCustomersTabVisit', currentDate);
+    
+    // Check for new receipts since last visit (or all receipts if first time)
+    const needsProcessing = await checkForReceiptsSinceDate(startDate);
+    
+    if (needsProcessing.hasNewReceipts) {
+      console.log(`Found ${needsProcessing.count} receipts since ${startDate || 'beginning'}, processing...`);
+      await processReceiptsSinceDate(needsProcessing.newReceipts);
+    } else {
+      console.log('No new receipts found since last visit');
+      if (stats.totalCustomers === 0) {
+        showProcessingStatus('ℹ️ No customer data found. Click "Process Customer Resolution" to process all receipts.', 'info');
+      } else {
+        showProcessingStatus(`✅ Customers up to date! Last visit: ${startDate || 'Never'}`, 'success');
       }
     }
   } catch (error) {
-    console.error('Error in auto-processing:', error);
-    showProcessingStatus(`Error in auto-processing: ${error.message}`, 'error');
+    console.error('Error in date-based processing:', error);
+    showProcessingStatus(`Error in processing: ${error.message}`, 'error');
+  }
+}
+
+// Check for receipts since a specific date
+async function checkForReceiptsSinceDate(startDate) {
+  try {
+    if (!startDate) {
+      // First time visit, check if we have any customers at all
+      const stats = customerResolutionService.getStats();
+      if (stats.totalCustomers === 0) {
+        // No customers exist, need to process everything
+        showProcessingStatus('🔍 First time visit - checking for all receipts...', 'info');
+        const response = await databases.listDocuments(
+          databaseId,
+          '68a30d780012b7b77108',
+          [Appwrite.Query.limit(10)] // Just check if any receipts exist
+        );
+        
+        if (response.documents.length > 0) {
+          return {
+            hasNewReceipts: true,
+            count: response.total || response.documents.length,
+            newReceipts: 'ALL' // Special flag to process all receipts
+          };
+        } else {
+          return { hasNewReceipts: false, count: 0, newReceipts: [] };
+        }
+      } else {
+        // Have customers but no start date, don't process anything
+        return { hasNewReceipts: false, count: 0, newReceipts: [] };
+      }
+    }
+    
+    showProcessingStatus(`🔍 Checking for receipts since ${startDate}...`, 'info');
+    
+    // Query for receipts created/updated after the start date
+    const response = await databases.listDocuments(
+      databaseId,
+      '68a30d780012b7b77108',
+      [
+        Appwrite.Query.greaterThan('date', startDate),
+        Appwrite.Query.orderDesc('date'),
+        Appwrite.Query.limit(100)
+      ]
+    );
+    
+    console.log(`Found ${response.documents.length} receipts since ${startDate}`);
+    
+    return {
+      hasNewReceipts: response.documents.length > 0,
+      count: response.documents.length,
+      newReceipts: response.documents
+    };
+    
+  } catch (error) {
+    console.error('Error checking for receipts since date:', error);
+    throw error;
+  }
+}
+
+// Process receipts since a specific date - OPTIMIZED version
+async function processReceiptsSinceDate(receipts) {
+  if (!receipts || receipts.length === 0) return;
+  
+  isProcessing = true;
+  
+  try {
+    if (receipts === 'ALL') {
+      // Special case: process all receipts (first time visit) - use optimized processing
+      showProcessingStatus('� First time processing - using optimized system for all receipts...', 'processing');
+      
+      // Use optimized fetch
+      const allReceipts = await optimizedProcessor.fetchAllReceiptsOptimized();
+      
+      // Use optimized customer resolution
+      await optimizedProcessor.processCustomerResolutionOptimized(allReceipts, customerResolutionService);
+      
+      // Use optimized updates
+      await optimizedProcessor.updateReceiptsOptimized(allReceipts);
+      
+      // Store in memory
+      await storeReceiptsInMemory(allReceipts);
+      
+    } else {
+      // Process only the new receipts - optimized for smaller batches
+      showProcessingStatus(`🔄 Processing ${receipts.length} new receipts since last visit...`, 'processing');
+      
+      if (receipts.length <= 50) {
+        // Small batch - use standard processing
+        const results = customerResolutionService.processNewReceipts(receipts);
+        const updateResults = await updateReceiptBatch(receipts);
+        
+        showProcessingStatus(`✅ Processed ${results.processedCount} new receipts, updated ${updateResults.updatedCount} documents`, 'success');
+        
+      } else {
+        // Larger batch - use optimized concurrent processing
+        showProcessingStatus(`🚀 Large batch detected (${receipts.length} receipts) - using optimized processing...`, 'processing');
+        
+        // Use optimized customer resolution
+        const processedCount = await optimizedProcessor.processCustomerResolutionOptimized(
+          receipts, 
+          customerResolutionService
+        );
+        
+        // Use optimized updates with concurrency control
+        const updatedCount = await optimizedProcessor.updateReceiptsOptimized(receipts);
+        
+        showProcessingStatus(
+          `✅ Optimized processing complete: ${processedCount} resolved, ${updatedCount} updated`, 
+          'success'
+        );
+      }
+    }
+    
+    // Update the last processing date
+    const currentDate = new Date().toISOString().split('T')[0];
+    localStorage.setItem('lastFullProcessDate', currentDate);
+    localStorage.setItem('lastProcessedTime', Date.now().toString());
+    
+    // Refresh display
+    await loadReceiptsFromMemory();
+    buildCustomerReceiptMap(allReceipts);
+    await displayResolvedCustomers();
+    
+    // Update UI
+    updateUIButtons();
+    
+  } catch (error) {
+    console.error('Error processing receipts since date:', error);
+    showProcessingStatus(`❌ Error processing receipts: ${error.message}`, 'error');
+  } finally {
+    isProcessing = false;
+  }
+}
+
+// Store receipts in localStorage with full data (including order items)
+async function storeReceiptsInMemory(newReceipts) {
+  try {
+    // Get existing cached receipts
+    const existingCacheStr = localStorage.getItem('cachedReceipts');
+    let existingReceipts = existingCacheStr ? JSON.parse(existingCacheStr) : [];
+    
+    // Add new receipts, avoiding duplicates
+    const existingIds = new Set(existingReceipts.map(r => r.$id));
+    
+    for (const receipt of newReceipts) {
+      if (!existingIds.has(receipt.$id)) {
+        // Store the receipt with all its data including order items
+        const fullReceipt = {
+          ...receipt,
+          // Ensure order items and return items are preserved
+          orderItem: receipt.orderItem || '',
+          returnItem: receipt.returnItem || '',
+          // Add processing metadata
+          dateProcessed: new Date().toISOString(),
+          commonId: receipt.resolvedCommonId || receipt.commonId
+        };
+        
+        existingReceipts.push(fullReceipt);
+      }
+    }
+    
+    // Cache updated receipts
+    localStorage.setItem('cachedReceipts', JSON.stringify(existingReceipts));
+    localStorage.setItem('receiptsCacheTime', Date.now().toString());
+    
+    console.log(`Stored ${newReceipts.length} new receipts in memory. Total cached: ${existingReceipts.length}`);
+    
+  } catch (error) {
+    console.warn('Error storing receipts in memory:', error);
+  }
+}
+
+// Load receipts from localStorage/memory with full data including order items
+async function loadReceiptsFromMemory() {
+  try {
+    // Check if we have receipts cached in localStorage
+    const cachedReceipts = localStorage.getItem('cachedReceipts');
+    const cacheTimestamp = localStorage.getItem('receiptsCacheTime');
+    
+    if (cachedReceipts && cacheTimestamp) {
+      const receipts = JSON.parse(cachedReceipts);
+      
+      if (receipts.length > 0) {
+        console.log(`Loading ${receipts.length} receipts from localStorage (including order items)`);
+        
+        // Validate that receipts have the required data
+        let validReceipts = receipts.filter(r => r.$id && r.customerName);
+        
+        console.log(`Loaded ${validReceipts.length} valid receipts from memory`);
+        allReceipts = validReceipts;
+        buildCustomerReceiptMap(allReceipts);
+        return;
+      }
+    }
+    
+    // If no valid cache, initialize empty array
+    console.log('No valid receipts cache found, starting with empty array');
+    allReceipts = [];
+  } catch (error) {
+    console.warn('Error loading receipts from memory:', error);
+    allReceipts = [];
+  }
+}
+
+// Cache receipts in localStorage for faster loading
+function cacheReceipts(receipts) {
+  try {
+    localStorage.setItem('cachedReceipts', JSON.stringify(receipts));
+    localStorage.setItem('receiptsCacheTime', Date.now().toString());
+    console.log(`Cached ${receipts.length} receipts for faster loading`);
+  } catch (error) {
+    console.warn('Error caching receipts:', error);
   }
 }
 
@@ -86,7 +400,7 @@ async function checkForUnprocessedReceipts() {
     
     const response = await databases.listDocuments(
       databaseId,
-      '689d4a4b000b62bd70ca', // allreceipt collection ID
+      '68a30d780012b7b77108', // allreceipt collection ID
       queries
     );
     
@@ -132,7 +446,7 @@ async function getUnprocessedReceiptCount() {
   try {
     const response = await databases.listDocuments(
       databaseId,
-      '689d4a4b000b62bd70ca',
+      '68a30d780012b7b77108',
       [
         Appwrite.Query.isNull('commonId'),
         Appwrite.Query.limit(1)
@@ -156,7 +470,7 @@ async function getAllUnprocessedReceipts() {
     try {
       const response = await databases.listDocuments(
         databaseId,
-        '689d4a4b000b62bd70ca',
+        '68a30d780012b7b77108',
         [
           Appwrite.Query.isNull('commonId'),
           Appwrite.Query.limit(limit),
@@ -209,7 +523,11 @@ async function processUnprocessedReceipts(receipts) {
     if (receipts.length > 0) {
       const lastReceipt = receipts[receipts.length - 1];
       localStorage.setItem('lastProcessedReceiptId', lastReceipt.$id);
+      localStorage.setItem('lastProcessedTime', Date.now().toString());
     }
+    
+    // Cache receipts for faster loading
+    cacheReceipts(allReceipts);
     
     // Rebuild customer receipt map
     allReceipts = await fetchAllProcessedReceipts();
@@ -249,7 +567,7 @@ async function updateReceiptBatch(receipts) {
       if (receipt.resolvedCommonId && (!receipt.commonId || receipt.commonId !== receipt.resolvedCommonId)) {
         await databases.updateDocument(
           databaseId,
-          '689d4a4b000b62bd70ca',
+          '68a30d780012b7b77108',
           receipt.$id,
           { commonId: receipt.resolvedCommonId }
         );
@@ -276,7 +594,7 @@ async function fetchAllProcessedReceipts() {
     try {
       const response = await databases.listDocuments(
         databaseId,
-        '689d4a4b000b62bd70ca',
+        '68a30d780012b7b77108',
         [
           Appwrite.Query.isNotNull('commonId'),
           Appwrite.Query.limit(limit),
@@ -374,51 +692,143 @@ function updateUIButtons() {
   
   if (stats.totalCustomers > 0) {
     document.getElementById('viewCustomersBtn').style.display = 'inline-block';
-    document.getElementById('refreshCustomersBtn').style.display = 'inline-block';
     document.getElementById('clearCustomersBtn').style.display = 'inline-block';
+    
+    // Hide refresh button (removed functionality)
+    const refreshBtn = document.getElementById('refreshCustomersBtn');
+    if (refreshBtn) {
+      refreshBtn.style.display = 'none';
+    }
     
     // Update process button text
     document.getElementById('processCustomersBtn').textContent = '🔄 Reprocess All Receipts';
   }
 }
 
-// Manual process all receipts (when button is clicked) - ALWAYS reprocesses everything
+// Manual process all receipts (when button is clicked) - OPTIMIZED for large datasets
 async function processAllReceipts(forceReprocess = false) {
   if (isProcessing) {
     alert('Processing is already in progress. Please wait...');
     return;
   }
-  
+
   const processBtn = document.getElementById('processCustomersBtn');
   const originalText = processBtn.textContent;
-  
+
   try {
     isProcessing = true;
     processBtn.disabled = true;
     processBtn.textContent = '🔄 Processing...';
-    
+
     // ALWAYS clear existing data for full reprocess when button is clicked
     customerResolutionService.clearData();
     localStorage.removeItem('lastProcessedReceiptId');
+    localStorage.removeItem('cachedReceipts');
+    localStorage.removeItem('receiptsCacheTime');
+
+    showProcessingStatus('� Starting OPTIMIZED full receipt processing (5000+ receipts supported)...', 'processing');
+
+    // Step 1: Optimized fetch with progress tracking
+    // Ensure optimized processor is available
+    if (!optimizedProcessor) {
+      if (typeof databases !== 'undefined' && typeof databaseId !== 'undefined') {
+        optimizedProcessor = new OptimizedBatchProcessor(databases, databaseId, '68a30d780012b7b77108');
+      } else {
+        throw new Error('Optimized processor not available - please refresh the page');
+      }
+    }
     
-    showProcessingStatus('🔄 Starting full receipt processing (reprocessing ALL receipts)...', 'processing');
-    
-    // Fetch ALL receipts (including those with commonId)
-    allReceipts = await fetchAllReceiptsForReprocessing();
-    
+    allReceipts = await optimizedProcessor.fetchAllReceiptsOptimized((progress) => {
+      if (progress.phase === 'fetch') {
+        showProcessingStatus(`📥 Fetching receipts: ${progress.fetched} loaded...`, 'processing');
+      }
+    });
+
     if (allReceipts.length === 0) {
       showProcessingStatus('❌ No receipts found in database', 'error');
       return;
     }
+
+    // Show processing estimate
+    const estimate = optimizedProcessor.estimateProcessingTime(allReceipts.length);
+    showProcessingStatus(
+      `� Processing ${allReceipts.length} receipts (estimated time: ${estimate.formattedTotal})...`, 
+      'info'
+    );
+
+    // Step 2: Optimized customer resolution processing
+    const processedCount = await optimizedProcessor.processCustomerResolutionOptimized(
+      allReceipts, 
+      customerResolutionService,
+      (progress) => {
+        if (progress.phase === 'resolution') {
+          const percent = Math.round((progress.processed / progress.total) * 100);
+          showProcessingStatus(`🔄 Customer resolution: ${progress.processed}/${progress.total} (${percent}%)`, 'processing');
+        }
+      }
+    );
+
+    // Step 3: FREE TIER Optimized Appwrite document updates with strict rate limiting
+    const updatedCount = await optimizedProcessor.updateReceiptsFreeTierOptimized(
+      allReceipts,
+      (progress) => {
+        if (progress.phase === 'update') {
+          const percent = Math.round((progress.updated / progress.total) * 100);
+          const errorMsg = progress.errors > 0 ? ` - ${progress.errors} errors` : '';
+          const remainingMsg = progress.remaining > 0 ? ` (${progress.remaining} remaining)` : '';
+          const rateLimitMsg = progress.requestsLeft !== undefined ? ` - ${progress.requestsLeft} requests left this hour` : '';
+          
+          showProcessingStatus(
+            `📝 FREE TIER: ${progress.updated}/${progress.total} (${percent}%)${errorMsg}${remainingMsg}${rateLimitMsg}`, 
+            'processing'
+          );
+        }
+      }
+    );
+
+    // Final steps
+    const currentDate = new Date().toISOString().split('T')[0];
+    localStorage.setItem('lastFullProcessDate', currentDate);
+    localStorage.setItem('lastCustomersTabVisit', currentDate);
+    localStorage.setItem('lastProcessedTime', Date.now().toString());
+
+    // Store all receipts in memory
+    await storeReceiptsInMemory(allReceipts);
+
+    // Show performance metrics for free tier
+    const metrics = optimizedProcessor.getPerformanceMetrics();
+    const remaining = allReceipts.length - metrics.totalUpdated;
     
-    showProcessingStatus(`📥 Fetched ${allReceipts.length} receipts, processing...`, 'processing');
-    
-    // Process all receipts with enhanced progress tracking
-    await processReceiptsWithProgress(allReceipts, true); // true = full reprocess mode
-    
+    if (remaining > 0) {
+      showProcessingStatus(
+        `⏸️ FREE TIER processing paused: ${metrics.totalProcessed} processed, ${metrics.totalUpdated} updated. ` +
+        `${remaining} receipts remaining. Resume tomorrow or upgrade to Pro for unlimited processing.`,
+        'warning'
+      );
+      
+      showProcessingStatus(
+        `💡 FREE TIER TIP: Your progress is saved. Click the button again tomorrow to continue where you left off!`,
+        'info'
+      );
+    } else {
+      showProcessingStatus(
+        `🎉 FREE TIER processing complete! ` +
+        `${metrics.totalProcessed} processed, ${metrics.totalUpdated} updated ` +
+        `in ${metrics.totalTime}s`,
+        'success'
+      );
+    }
+
+    if (metrics.totalErrors > 0) {
+      showProcessingStatus(
+        `⚠️ ${metrics.totalErrors} errors occurred with ${metrics.retryCount} automatic retries.`,
+        'warning'
+      );
+    }
+
   } catch (error) {
-    console.error('Error in processAllReceipts:', error);
-    showProcessingStatus(`❌ Error: ${error.message}`, 'error');
+    console.error('Error in optimized processAllReceipts:', error);
+    showProcessingStatus(`❌ Optimized processing error: ${error.message}`, 'error');
   } finally {
     isProcessing = false;
     processBtn.disabled = false;
@@ -435,7 +845,16 @@ async function checkCustomerStatus() {
     
     // Show status with enhanced stats
     const statusDiv = document.getElementById('customerProcessingStatus');
-    const lastProcessed = stats.lastProcessedDate ? new Date(stats.lastProcessedDate).toLocaleDateString() : 'Never';
+    
+    // Get last full processing date and last customers tab visit
+    const lastFullProcessDate = localStorage.getItem('lastFullProcessDate');
+    const lastCustomersTabVisit = localStorage.getItem('lastCustomersTabVisit');
+    
+    const lastProcessed = lastFullProcessDate ? 
+      new Date(lastFullProcessDate).toLocaleDateString() : 'Never';
+    
+    const lastVisit = lastCustomersTabVisit ?
+      new Date(lastCustomersTabVisit).toLocaleDateString() : 'Never';
     
     statusDiv.innerHTML = `
       <div class="status-success">
@@ -443,7 +862,9 @@ async function checkCustomerStatus() {
         <div class="status-details">
           <span>👥 ${stats.totalCustomers} customers</span>
           <span>🏷️ ${stats.totalAliases} aliases</span>
-          <span>📅 Last processed: ${lastProcessed}</span>
+          <span>📊 ${allReceipts.length} receipts in memory</span>
+          <span>📅 Last full process: ${lastProcessed}</span>
+          <span>👁️ Last tab visit: ${lastVisit}</span>
           ${stats.manualReviewCount > 0 ? `<span style="color: #F59E0B;">⚠️ ${stats.manualReviewCount} manual reviews</span>` : ''}
         </div>
       </div>
@@ -491,7 +912,7 @@ async function fetchAllReceipts() {
     try {
       const response = await databases.listDocuments(
         databaseId,
-        '689d4a4b000b62bd70ca', // allreceipt collection ID
+        '68a30d780012b7b77108', // allreceipt collection ID
         [
           Appwrite.Query.limit(limit),
           Appwrite.Query.offset(offset)
@@ -532,7 +953,7 @@ async function fetchAllReceiptsForReprocessing() {
     try {
       const response = await databases.listDocuments(
         databaseId,
-        '689d4a4b000b62bd70ca', // allreceipt collection ID
+        '68a30d780012b7b77108', // allreceipt collection ID
         [
           Appwrite.Query.limit(limit),
           Appwrite.Query.offset(offset),
@@ -611,7 +1032,11 @@ async function processReceiptsWithProgress(receipts, isFullReprocess = false) {
   if (receipts.length > 0) {
     const lastReceipt = receipts[receipts.length - 1];
     localStorage.setItem('lastProcessedReceiptId', lastReceipt.$id);
+    localStorage.setItem('lastProcessedTime', Date.now().toString());
   }
+  
+  // Cache the receipts for faster loading
+  cacheReceipts(receipts);
   
   // Rebuild customer receipt map
   allReceipts = receipts;
@@ -647,7 +1072,7 @@ async function updateAllProcessedReceipts(receipts, totalCount) {
         if (receipt.resolvedCommonId && (!receipt.commonId || receipt.commonId !== receipt.resolvedCommonId)) {
           await databases.updateDocument(
             databaseId,
-            '689d4a4b000b62bd70ca',
+            '68a30d780012b7b77108',
             receipt.$id,
             { commonId: receipt.resolvedCommonId }
           );
@@ -707,16 +1132,19 @@ async function displayResolvedCustomers() {
   try {
     customersListDiv.innerHTML = '<div class="loading">🔄 Loading customer data...</div>';
     
-    if (customerReceiptsMap.size === 0) {
-      // Rebuild map if needed
-      buildCustomerReceiptMap(allReceipts);
-    }
-    
     const customers = customerResolutionService.getAllCustomers();
     
     if (customers.length === 0) {
       customersListDiv.innerHTML = '<div class="no-customers">No customers found. Please process customer resolution first.</div>';
       return;
+    }
+    
+    // If we don't have receipts loaded, try to load them from cache
+    if (customerReceiptsMap.size === 0 && allReceipts.length === 0) {
+      await loadReceiptsFromMemory();
+      if (allReceipts.length > 0) {
+        buildCustomerReceiptMap(allReceipts);
+      }
     }
     
     // Sort customers alphabetically by store name, then by customer name
@@ -733,7 +1161,7 @@ async function displayResolvedCustomers() {
       
       return storeA.localeCompare(storeB);
     });
-    
+
     // Display customers
     let html = '<div class="customers-header">';
     html += `<h2>Customer Overview (${customers.length} customers)</h2>`;
@@ -742,7 +1170,7 @@ async function displayResolvedCustomers() {
     html += `<span>💰 Total Revenue: ${customerUtils.formatCurrency(calculateTotalRevenue())}</span>`;
     html += '</div>';
     html += '</div>';
-    
+
     html += '<div class="customers-grid">';
     
     for (const customer of customers) {
@@ -767,9 +1195,7 @@ async function displayResolvedCustomers() {
     console.error('Error displaying customers:', error);
     customersListDiv.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
   }
-}
-
-// View customer purchase history
+}// View customer purchase history
 async function viewCustomerHistory(commonId) {
   const customerReceipts = customerReceiptsMap.get(commonId) || [];
   const customer = customerResolutionService.getCustomerInfo(commonId);
@@ -947,7 +1373,12 @@ function clearCustomerData() {
     customerResolutionService.clearData();
     allReceipts = [];
     customerReceiptsMap.clear();
+    
+    // Clear all localStorage items related to processing
     localStorage.removeItem('lastProcessedReceiptId');
+    localStorage.removeItem('lastProcessedTime');
+    localStorage.removeItem('cachedReceipts');
+    localStorage.removeItem('receiptsCacheTime');
     
     // Reset UI
     document.getElementById('customerProcessingStatus').innerHTML = '';
