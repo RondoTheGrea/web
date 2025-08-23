@@ -314,7 +314,6 @@
         <button id="clearCustomersBtn" class="action-button" style="display:none;">🗑️ Clear Data</button>
       </div>
       <div id="customerProcessingStatus"></div>
-      <div id="statusMessages" class="status-messages"></div>
       <div id="customersList"></div>
     </div>
   </div>
@@ -339,30 +338,17 @@
   <script src="customerResolutionService.js"></script>
   <script src="customerUtils.js"></script>
   <script src="customerDashboard.js"></script>
-  <script src="freeTierProcessing.js"></script>
-  <script src="debugCustomerDashboard.js"></script>
   
   <script>
     if (window.location.protocol === 'file:') {
       document.getElementById('corsWarning').style.display = 'block';
     }
 
-    // ✅ Appwrite Setup (two separate projects)
-    // Receipts project (Customers tab)
-    const receiptsClient = new Appwrite.Client();
-    receiptsClient.setEndpoint('https://cloud.appwrite.io/v1').setProject('68a30bee00255e4ae362');
-    const receiptsDatabases = new Appwrite.Databases(receiptsClient);
-    const receiptsDatabaseId = '68a30d180014c409f739';
-
-    // Main project (CSV, Sales, Expenses, Charts)
-    const mainClient = new Appwrite.Client();
-    mainClient.setEndpoint('https://cloud.appwrite.io/v1').setProject('676a55320025aab57b76');
-    const mainDatabases = new Appwrite.Databases(mainClient);
-    const mainDatabaseId = '676a5743003e13f9398d';
-
-    // Back-compat globals used by Customers tab scripts
-    const databases = receiptsDatabases;
-    const databaseId = receiptsDatabaseId;
+    // ✅ Appwrite Setup
+    const client = new Appwrite.Client();
+    client.setEndpoint('https://cloud.appwrite.io/v1').setProject('676a55320025aab57b76');
+    const databases = new Appwrite.Databases(client);
+    const databaseId = '676a5743003e13f9398d';
     const csvCollection = 'CSV';
     const salesCollection = 'sales';
 
@@ -427,8 +413,8 @@
             const limit = 100; // Fetch in batches of 100
             
             while (true) {
-              const response = await mainDatabases.listDocuments(
-                mainDatabaseId,
+              const response = await databases.listDocuments(
+                databaseId,
                 'customers',
                 [
                   Appwrite.Query.limit(limit),
@@ -519,14 +505,14 @@
         
         // Fetch documents with a reasonable limit
         console.log("Fetching CSV documents...");
-        const csvDocs = await mainDatabases.listDocuments(mainDatabaseId, csvCollection, [
+        const csvDocs = await databases.listDocuments(databaseId, csvCollection, [
           Appwrite.Query.orderDesc("date"),
           Appwrite.Query.limit(100)
         ]);
         console.log("CSV documents received:", csvDocs);
         
         console.log("Fetching Sales documents...");
-        const salesDocs = await mainDatabases.listDocuments(mainDatabaseId, salesCollection, [
+        const salesDocs = await databases.listDocuments(databaseId, salesCollection, [
           Appwrite.Query.orderDesc("date"),
           Appwrite.Query.limit(100)
         ]);
@@ -622,8 +608,8 @@
         const csvQuery = [Appwrite.Query.equal("date", date)];
         const salesQuery = [Appwrite.Query.equal("date", date)];
         
-        const csvDocs = await mainDatabases.listDocuments(mainDatabaseId, csvCollection, csvQuery);
-        const salesDocs = await mainDatabases.listDocuments(mainDatabaseId, salesCollection, salesQuery);
+        const csvDocs = await databases.listDocuments(databaseId, csvCollection, csvQuery);
+        const salesDocs = await databases.listDocuments(databaseId, salesCollection, salesQuery);
         
         // Extract unique userIds
         const csvUserIds = csvDocs.documents.map(doc => doc.userId);
@@ -675,7 +661,7 @@
       try {
         showStatus(`Fetching CSV data for ${date}, User: ${userId}...`);
         
-        const res = await mainDatabases.listDocuments(mainDatabaseId, csvCollection, queries);
+        const res = await databases.listDocuments(databaseId, csvCollection, queries);
         
         console.log("CSV query result:", res);
         
@@ -704,7 +690,7 @@
       try {
         showStatus(`Fetching Sales data for ${date}, User: ${userId}...`);
         
-        const res = await mainDatabases.listDocuments(mainDatabaseId, salesCollection, queries);
+        const res = await databases.listDocuments(databaseId, salesCollection, queries);
         
         console.log("Sales query result:", res);
         
@@ -733,8 +719,8 @@
       try {
         showStatus(`Fetching Expenses data for ${date}, User: ${userId}...`);
         
-        const expensesRes = await mainDatabases.listDocuments(
-          mainDatabaseId,
+        const expensesRes = await databases.listDocuments(
+          databaseId,
           '680476b00037a3775919', // expenses collection ID
           [
             Appwrite.Query.equal("date", date),
@@ -1269,66 +1255,47 @@
       showStatus("Starting application...");
       setupSampleDataButton();
       
-      console.log("Appwrite projects:", {
-        mainProjectId: '676a55320025aab57b76',
-        mainDatabaseId: mainDatabaseId,
-        receiptsProjectId: '68a30bee00255e4ae362',
-        receiptsDatabaseId: receiptsDatabaseId
+      console.log("Appwrite config:", {
+        endpoint: 'https://cloud.appwrite.io/v1',
+        projectId: '676a55320025aab57b76',
+        databaseId: databaseId,
+        csvCollection: csvCollection,
+        salesCollection: salesCollection
       });
-
-      Promise.all([testMainAppwriteConnection(), testReceiptsAppwriteConnection()]).then(([mainOk, receiptsOk]) => {
-        if (mainOk) {
+      
+      testAppwriteConnection().then(success => {
+        if (success) {
           getAvailableDates();
+          // Initialize customer dashboard
+          initCustomerDashboard();
         } else {
-          showStatus("Main DB connection failed. CSV/Sales/Expenses may be unavailable. You can use Sample Data.", true);
+          showStatus("Connection to Appwrite failed. Try using Sample Data button.", true);
         }
-
-        setTimeout(() => {
-          if (receiptsOk && typeof initCustomerDashboard === 'function') {
-            initCustomerDashboard();
-          } else if (!receiptsOk) {
-            console.error('Receipts DB connection failed - Customers tab features may be limited');
-          } else {
-            console.error('initCustomerDashboard function not found - check script loading order');
-          }
-        }, 100);
       });
     });
 
-    // Test connectivity to MAIN project (CSV/Sales/Expenses)
-    async function testMainAppwriteConnection() {
+    async function testAppwriteConnection() {
       try {
-        showStatus("Testing main Appwrite connection...");
-        const health = await mainDatabases.listDocuments(mainDatabaseId, csvCollection, [
+        showStatus("Testing Appwrite connection...");
+        const health = await databases.listDocuments(databaseId, csvCollection, [
           Appwrite.Query.limit(1)
         ]);
-        console.log("Main DB connection successful:", health);
-        showStatus("Main Appwrite connection successful!");
+        console.log("Database connection successful:", health);
+        showStatus("Appwrite connection successful!");
         return true;
       } catch (error) {
-        console.error("Main DB connection failed:", error);
+        console.error("Database connection failed:", error);
+        
         if (error.message?.includes('Failed to fetch')) {
           showStatus(`CORS Error: Please access this page through a web server (http://localhost:8080) instead of directly opening the file.`, true);
         } else {
-          showStatus(`Main DB connection failed: ${error.message}`, true);
+          showStatus(`Appwrite connection failed: ${error.message}`, true);
         }
         return false;
       }
     }
-
-    // Test connectivity to RECEIPTS project (Customers tab)
-    async function testReceiptsAppwriteConnection() {
-      try {
-        const health = await receiptsDatabases.listDocuments(receiptsDatabaseId, '68a30d780012b7b77108', [
-          Appwrite.Query.limit(1)
-        ]);
-        console.log("Receipts DB connection successful:", health);
-        return true;
-      } catch (error) {
-        console.error("Receipts DB connection failed:", error);
-        return false;
-      }
-    }
+    
+    testAppwriteConnection();
 
     // Add this new function for table column resizing
     function setupTableResizing() {

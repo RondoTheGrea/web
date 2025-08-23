@@ -61,11 +61,9 @@
         
         <div class="tab-content" id="customers">
             <h4>Customers Tab</h4>
-            <p><strong>Memory-First Loading:</strong> Shows customers from memory first, then checks for new receipts only if needed.</p>
             <div id="customerProcessingStatus"></div>
             <div id="customersList"></div>
             <button class="button" onclick="manualProcess()">Manual Process All</button>
-            <button class="button" onclick="showMemoryStats()">Show Memory Stats</button>
         </div>
     </div>
 
@@ -138,18 +136,11 @@
             ];
             
             mockProcessedIds.clear();
-            
-            // Simulate having some data in localStorage from previous session
-            localStorage.setItem('lastProcessedTime', (Date.now() - 2 * 60 * 1000).toString()); // 2 minutes ago
-            localStorage.setItem('lastProcessedReceiptId', 'mock_last_id');
-            
             log(`Setup complete: ${mockReceipts.length} mock receipts created`);
-            log('Simulated previous processing session with localStorage data');
             
             document.getElementById('mockStatus').innerHTML = `
                 <div class="status success">
-                    ✅ Mock data ready: ${mockReceipts.length} receipts, 0 processed<br>
-                    📅 Simulated last processed: 2 minutes ago
+                    ✅ Mock data ready: ${mockReceipts.length} receipts, 0 processed
                 </div>
             `;
         }
@@ -297,27 +288,6 @@
             logEntry.innerHTML = `<strong>${timestamp}</strong>: ${message}`;
             logDiv.appendChild(logEntry);
             logDiv.scrollTop = logDiv.scrollHeight;
-        }
-
-        function showMemoryStats() {
-            const stats = customerResolutionService?.getStats() || { totalCustomers: 0, totalAliases: 0 };
-            const lastProcessedTime = localStorage.getItem('lastProcessedTime');
-            const cachedReceipts = localStorage.getItem('cachedReceipts');
-            const cacheTime = localStorage.getItem('receiptsCacheTime');
-            
-            let memoryInfo = `
-                <div class="status info">
-                    <strong>📊 Memory Stats:</strong><br>
-                    👥 Customers in memory: ${stats.totalCustomers}<br>
-                    🏷️ Aliases in memory: ${stats.totalAliases}<br>
-                    📅 Last processed: ${lastProcessedTime ? new Date(parseInt(lastProcessedTime)).toLocaleString() : 'Never'}<br>
-                    💾 Cached receipts: ${cachedReceipts ? JSON.parse(cachedReceipts).length : 0}<br>
-                    🕒 Cache time: ${cacheTime ? new Date(parseInt(cacheTime)).toLocaleString() : 'None'}
-                </div>
-            `;
-            
-            document.getElementById('customerProcessingStatus').innerHTML = memoryInfo;
-            log('Memory stats displayed');
         }
 
         function clearLog() {
