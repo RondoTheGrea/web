@@ -17,7 +17,6 @@
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; background-color: #f9fafb; color: #1f2937; }
     h1 { text-align: center; color: #265DAB; }
-    .tabs { display: flex; margin-top: 20px; border-bottom: 2px solid #e5e7eb; }
     .tab-button {
       padding: 10px 15px;
       border: none;
@@ -33,6 +32,7 @@
     }
     .tab-content { display: none; margin-top: 20px; }
     .tab-content.active { display: block; }
+    .tabs { display: flex; margin-top: 20px; border-bottom: 2px solid #e5e7eb; }
     table { width: 100%; border-collapse: collapse; margin-top: 15px; background: white; }
     th, td { padding: 10px; border: 1px solid #ddd; text-align: left; font-size: 14px; }
     th { background-color: #265DAB; color: white; }
@@ -264,10 +264,6 @@
       display: inline-block;
     }
   </style>
-</head>
-<body>
-
-  <div style="background-color: #FEF3C7; color: #92400E; padding: 10px; margin-bottom: 20px; border-radius: 5px; display: none;" id="corsWarning">
     ⚠️ This page must be accessed through a web server (e.g., http://localhost:8080) and not opened directly as a file.
   </div>
 
@@ -341,8 +337,6 @@
 
   <!-- Customer Dashboard Scripts -->
   <script src="customerResolutionService.js"></script>
-  <script src="optimizedBatchProcessor.js"></script>
-  <script src="freeTierOptimizedProcessor.js"></script>
   <script src="customerUtils.js"></script>
   <script src="customerDashboard.js"></script>
   <script src="freeTierProcessing.js"></script>

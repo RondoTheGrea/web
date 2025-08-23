@@ -21,7 +21,7 @@ web/
 
 - **🔄 Automatic Processing**: Triggers when Customers tab is accessed
 - **📊 Smart Detection**: Only processes unprocessed receipts (no `commonId`)
-- **⚡ Incremental Updates**: Tracks processing state to avoid reprocessing
+- **⚡ Efficient Updates**: Tracks processing state to avoid reprocessing
 - **🔄 Batch Processing**: Handles large datasets efficiently without blocking UI
 - **💾 State Persistence**: Remembers last processed receipt ID
 
@@ -39,7 +39,7 @@ web/
    - Processes only new/unprocessed receipts
    - Updates Appwrite documents with resolved `commonId`
 
-3. **Smart State Tracking**:
+3. **Efficient State Tracking**:
 
    - Stores `lastProcessedReceiptId` in localStorage
    - Uses Appwrite `commonId` field to identify processed receipts
@@ -56,13 +56,13 @@ web/
 ### **Two Processing Modes**
 
 1. **🔄 Manual Reprocessing (Process Customer Resolution Button)**
+   - **Aggressively processes ALL receipts**, including those with existing `commonId`.
+   - Designed for speed, resuming automatically even after encountering rate limits.
+   - Clears all previous customer data and starts fresh.
+   - Uses enhanced progress tracking with a rolling status log.
+   - Best for: Complete data refresh, troubleshooting, or major updates, especially when rapid processing is needed despite potential rate limitations.
 
-   - **Always reprocesses ALL receipts** (including those with existing `commonId`)
-   - Clears all previous customer data and starts fresh
-   - Uses enhanced progress tracking with rolling status log
-   - Best for: Complete data refresh, troubleshooting, or major updates
-
-2. **⚡ Smart Auto-Processing (Customers Tab Click)**
+2. **⚡ Efficient Auto-Processing (Customers Tab Click)**
    - **Only processes unprocessed receipts** (without `commonId`)
    - Efficient incremental processing
    - Maintains existing customer mappings
@@ -121,7 +121,7 @@ await databases.updateDocument(dbId, collectionId, receiptId, {
    - Tests core resolution algorithms
    - Jaro-Winkler and Levenshtein testing
    - Store validation testing
-   - Alias caching verification
+ - Alias caching verification
 
 2. **`autoProcessingTest.html`** ⭐ **NEW**
 
@@ -157,7 +157,7 @@ await databases.updateDocument(dbId, collectionId, receiptId, {
 1. Open `continueTheCodePlease.html`
 2. System loads without processing anything
 3. Click "Customers" tab → **Smart auto-processing** (incremental only)
-4. Click "Process Customer Resolution" → **Full reprocessing** (all receipts)
+4. Click "Process Customer Resolution" → **Aggressive reprocessing** (all receipts, resumes after rate limits)
 5. Progress shown with rolling status log (max 10 messages)
 6. Results cached for future visits
 
@@ -173,7 +173,7 @@ await databases.updateDocument(dbId, collectionId, receiptId, {
 - ✅ **Store Validation**: Customer names validated against store context
 - ✅ **Alias Caching**: Efficient lookup for known customer variations
 - ✅ **Incremental Processing**: Only processes new/unprocessed receipts
-- ✅ **Background Updates**: Non-blocking UI with real-time progress
+- ✅ **Background Updates**: Non-blocking UI with real-time progress and rate limit resilience
 - ✅ **State Persistence**: Remembers processing state across sessions
 - ✅ **Error Handling**: Graceful fallbacks for network/data issues
 - ✅ **Performance Optimization**: Smart batching for large datasets
@@ -309,7 +309,7 @@ initCustomerDashboard(); // Loads and configures service
 - **`integrationTest.html`** - Tests file interactions
 - Validates all components work together
 - Checks for missing dependencies
-
+ 
 ## 📊 Data Flow
 
 ```
