@@ -261,6 +261,62 @@
       display: inline-block;
     }
 
+    /* Search controls styles */
+    .search-controls {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .search-input-group {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .search-input {
+      flex: 1;
+      padding: 12px 16px;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 16px;
+      transition: all 0.2s ease;
+      background: #f9fafb;
+    }
+
+    .search-input:focus {
+      outline: none;
+      border-color: #265DAB;
+      background: white;
+      box-shadow: 0 0 0 3px rgba(38, 93, 171, 0.1);
+    }
+
+    .clear-search-btn {
+      padding: 12px 20px;
+      background: #6b7280;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s ease;
+    }
+
+    .clear-search-btn:hover {
+      background: #4b5563;
+    }
+
+    .search-stats {
+      color: #6b7280;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
     /* Customer tab styles */
     .customer-grid {
       display: grid;
@@ -279,6 +335,7 @@
       box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
       position: relative;
       overflow: hidden;
+      user-select: none;
     }
 
     .customer-card::before {
@@ -701,48 +758,99 @@
       font-style: italic;
     }
 
-         /* Sales Controls Styles */
-     .sales-controls {
-       background: white;
-       padding: 16px;
-       border-radius: 8px;
-       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-       margin-bottom: 20px;
-       display: flex;
-       flex-direction: column;
-       gap: 12px;
+         /* Toggle Switch Spacing */
+     .toggle-switch {
+       margin-left: 16px;
      }
 
-     .toggle-label {
-       display: flex;
+     /* Toggle Switch Styles */
+     .toggle-switch {
+       display: inline-flex;
        align-items: center;
-       gap: 12px;
+       gap: 8px;
        cursor: pointer;
        user-select: none;
+       font-size: 14px;
+       font-weight: 500;
+       color: #374151;
+       vertical-align: middle;
      }
 
-     .toggle-label input[type="checkbox"] {
+     .toggle-switch input[type="checkbox"] {
+       display: none;
+     }
+
+     .switch-slider {
+       position: relative;
+       width: 44px;
+       height: 24px;
+       background-color: #d1d5db;
+       border-radius: 12px;
+       transition: background-color 0.2s ease;
+     }
+
+     .switch-slider:before {
+       content: '';
+       position: absolute;
+       top: 2px;
+       left: 2px;
        width: 20px;
        height: 20px;
-       accent-color: #265DAB;
-       cursor: pointer;
+       background-color: white;
+       border-radius: 50%;
+       transition: transform 0.2s ease;
+       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
      }
 
-     .toggle-text {
-       font-weight: 600;
-       color: #1e293b;
-       font-size: 16px;
+     .toggle-switch input[type="checkbox"]:checked + .switch-slider {
+       background-color: #265DAB;
      }
 
-     .toggle-description {
+     .toggle-switch input[type="checkbox"]:checked + .switch-slider:before {
+       transform: translateX(20px);
+     }
+
+     .switch-label {
+       font-size: 13px;
+       font-weight: 500;
        color: #6b7280;
-       font-size: 14px;
-       font-style: italic;
-       margin-left: 32px;
+     }
+     
+     /* Hover effects for toggle switch */
+     .toggle-switch:hover .switch-slider {
+       background-color: #9ca3af;
+     }
+     
+     .toggle-switch:hover input[type="checkbox"]:checked + .switch-slider {
+       background-color: #1e40af;
+     }
+     
+     /* Focus styles for accessibility */
+     .toggle-switch input[type="checkbox"]:focus + .switch-slider {
+       box-shadow: 0 0 0 3px rgba(38, 93, 171, 0.1);
      }
 
      /* Responsive design for customer grid */
      @media (max-width: 768px) {
+      .search-controls {
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      
+      .search-input-group {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      
+      .search-input {
+        font-size: 16px; /* Prevents zoom on iOS */
+      }
+      
+      .toggle-switch {
+        margin-left: 8px;
+        margin-top: 8px;
+      }
+      
       .customer-grid {
         grid-template-columns: 1fr;
         gap: 15px;
@@ -811,6 +919,11 @@
 
   <div class="copy-buttons">
     <button class="copy-button" data-tab="csv">📥 Download CSV Data</button>
+    <label class="toggle-switch" data-tab="sales" style="display:none;">
+      <input type="checkbox" id="showCustomerNames">
+      <span class="switch-slider"></span>
+      <span class="switch-label">Show Customer Names</span>
+    </label>
     <button class="copy-button" data-tab="sales" style="display:none;">📥 Download Sales Data</button>
   </div>
 
@@ -820,13 +933,6 @@
 
      <div id="sales" class="tab-content">
      <div id="salesContent">
-       <div class="sales-controls">
-         <label class="toggle-label">
-           <input type="checkbox" id="showCustomerNames">
-           <span class="toggle-text">Show Customer Names</span>
-         </label>
-         <span class="toggle-description">Toggle to show customer names in the format: Store Name (Customer Name). Default shows only store names.</span>
-       </div>
        <div id="salesTableContent">Please select a date and user to load Sales...</div>
      </div>
    </div>
@@ -849,6 +955,15 @@
 
   <div id="customers" class="tab-content">
     <div id="customersContent">
+      <div class="search-controls">
+        <div class="search-input-group">
+          <input type="text" id="customerSearch" placeholder="Search by store name or customer name..." class="search-input">
+          <button id="clearSearch" class="clear-search-btn" style="display: none;">Clear</button>
+        </div>
+        <div class="search-stats">
+          <span id="searchResultsCount"></span>
+        </div>
+      </div>
       <div class="customer-grid" id="customerGrid">
         <div class="loading">Loading customers...</div>
       </div>
@@ -875,6 +990,9 @@
 
     // Initialize customer service
     const customerService = new CustomerService();
+    
+    // Global variable to store all customers for search functionality
+    let allCustomers = [];
 
     if (window.location.protocol === 'file:') {
       document.getElementById('corsWarning').style.display = 'block';
@@ -1817,6 +1935,17 @@
         document.querySelectorAll('.copy-button').forEach(b => {
           b.style.display = (b.dataset.tab === target && target !== 'charts') ? 'inline-block' : 'none';
         });
+        
+        // Show/hide sales download button and toggle switch
+        const salesDownloadBtn = document.querySelector('.copy-button[data-tab="sales"]');
+        const salesToggleSwitch = document.querySelector('.toggle-switch[data-tab="sales"]');
+        
+        if (salesDownloadBtn) {
+          salesDownloadBtn.style.display = (target === 'sales') ? 'inline-block' : 'none';
+        }
+        if (salesToggleSwitch) {
+          salesToggleSwitch.style.display = (target === 'sales') ? 'inline-flex' : 'none';
+        }
       });
     });
 
@@ -2029,8 +2158,14 @@
           return;
         }
 
-        displayCustomers(customers);
-        showStatus(`Loaded ${customers.length} customers successfully`);
+        // Store all customers globally and sort them properly
+        allCustomers = sortCustomers(customers, 'storeName');
+
+        displayCustomers(allCustomers);
+        showStatus(`Loaded ${allCustomers.length} customers successfully`);
+        
+        // Setup search functionality
+        setupCustomerSearch();
       } catch (error) {
         console.error("Error loading customers:", error);
         document.getElementById('customerGrid').innerHTML = '<p style="text-align: center; color: #DC2626; font-weight: bold;">❌ Error loading customers: ' + error.message + '</p>';
@@ -2042,13 +2177,20 @@
     function displayCustomers(customers) {
       const customerGrid = document.getElementById('customerGrid');
       
-      const customerCards = customers.map(customer => {
+      if (customers.length === 0) {
+        customerGrid.innerHTML = '<div style="text-align: center; color: #6b7280; padding: 40px;"><p>No customers found matching your search.</p><p style="font-size: 14px; margin-top: 8px;">Try adjusting your search terms or clearing the search.</p></div>';
+        return;
+      }
+      
+      const customerCards = customers.map((customer, index) => {
         const customerKey = `${customer.customerName}|${customer.storeName}`;
+        // Safely encode the customer key to prevent JavaScript injection
+        const safeCustomerKey = encodeURIComponent(customerKey);
         return `
-          <div class="customer-card" onclick="showCustomerReceipts('${customerKey}')">
+          <div class="customer-card" data-customer-key="${safeCustomerKey}" data-customer-index="${index}">
             <div class="customer-header">
-              <h3>${customer.storeName}</h3>
-              <span class="customer-name">${customer.customerName}</span>
+              <h3>${escapeHTML(customer.storeName)}</h3>
+              <span class="customer-name">${escapeHTML(customer.customerName)}</span>
             </div>
             <div class="customer-info">
               <div class="info-item">
@@ -2064,6 +2206,148 @@
       }).join('');
 
       customerGrid.innerHTML = customerCards;
+      
+      // Add click event listeners to customer cards
+      const customerCardsElements = customerGrid.querySelectorAll('.customer-card');
+      customerCardsElements.forEach(card => {
+        card.addEventListener('click', function() {
+          const encodedCustomerKey = this.getAttribute('data-customer-key');
+          if (encodedCustomerKey) {
+            try {
+              const customerKey = decodeURIComponent(encodedCustomerKey);
+              console.log('Customer card clicked:', customerKey);
+              showCustomerReceipts(customerKey);
+            } catch (error) {
+              console.error('Error showing customer receipts:', error);
+              alert('Error loading customer receipts. Please try again.');
+            }
+          }
+        });
+      });
+    }
+    
+    // Setup customer search functionality
+    function setupCustomerSearch() {
+      const searchInput = document.getElementById('customerSearch');
+      const clearSearchBtn = document.getElementById('clearSearch');
+      const searchResultsCount = document.getElementById('searchResultsCount');
+      
+      if (!searchInput) return;
+      
+      // Search function with debouncing
+      let searchTimeout;
+      function performSearch() {
+        const searchTerm = searchInput.value.toLowerCase().trim();
+        
+        if (searchTerm === '') {
+          // Show all customers when search is empty
+          displayCustomers(allCustomers);
+          clearSearchBtn.style.display = 'none';
+          updateSearchResultsCount(allCustomers.length, '');
+          return;
+        }
+        
+        // Filter customers by store name or customer name
+        const filteredCustomers = allCustomers.filter(customer => {
+          const storeNameMatch = customer.storeName.toLowerCase().includes(searchTerm);
+          const customerNameMatch = customer.customerName.toLowerCase().includes(searchTerm);
+          return storeNameMatch || customerNameMatch;
+        });
+        
+        // Sort filtered results to maintain consistent ordering
+        const sortedFilteredCustomers = sortCustomers(filteredCustomers, 'storeName');
+        
+        // Display filtered results
+        displayCustomers(sortedFilteredCustomers);
+        
+        // Update UI
+        clearSearchBtn.style.display = 'inline-block';
+        updateSearchResultsCount(sortedFilteredCustomers.length, searchTerm);
+      }
+      
+      // Debounced search function
+      function debouncedSearch() {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(performSearch, 300);
+      }
+      
+      // Event listeners
+      searchInput.addEventListener('input', debouncedSearch);
+      searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          searchInput.value = '';
+          performSearch();
+          searchInput.blur();
+        }
+      });
+      
+      clearSearchBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        performSearch();
+        searchInput.focus();
+      });
+      
+      // Initialize search results count
+      updateSearchResultsCount(allCustomers.length, '');
+      
+      // Add search input placeholder animation
+      let placeholderIndex = 0;
+      const placeholders = [
+        'Search by store name or customer name...',
+        'Try "Store ABC" or "John Doe"...',
+        'Search is case-insensitive...'
+      ];
+      
+      setInterval(() => {
+        placeholderIndex = (placeholderIndex + 1) % placeholders.length;
+        searchInput.placeholder = placeholders[placeholderIndex];
+      }, 3000);
+    }
+    
+    // Function to refresh search results count
+    function updateSearchResultsCount(filteredCount, searchTerm = '') {
+      const searchResultsCount = document.getElementById('searchResultsCount');
+      if (searchResultsCount) {
+        if (searchTerm === '') {
+          searchResultsCount.textContent = `Showing all ${allCustomers.length} customers`;
+        } else {
+          searchResultsCount.textContent = `Found ${filteredCount} customer${filteredCount !== 1 ? 's' : ''} matching "${searchTerm}"`;
+        }
+      }
+    }
+    
+    // Function to sort customers by different criteria
+    function sortCustomers(customers, sortBy = 'storeName') {
+      const sortedCustomers = [...customers];
+      
+      switch (sortBy) {
+        case 'storeName':
+          sortedCustomers.sort((a, b) => {
+            const storeNameComparison = a.storeName.localeCompare(b.storeName);
+            if (storeNameComparison !== 0) return storeNameComparison;
+            return a.customerName.localeCompare(b.customerName);
+          });
+          break;
+        case 'customerName':
+          sortedCustomers.sort((a, b) => {
+            const customerNameComparison = a.customerName.localeCompare(b.customerName);
+            if (customerNameComparison !== 0) return customerNameComparison;
+            return a.storeName.localeCompare(b.storeName);
+          });
+          break;
+        case 'receiptCount':
+          sortedCustomers.sort((a, b) => b.receiptCount - a.receiptCount);
+          break;
+        default:
+          // Default to store name sorting
+          sortedCustomers.sort((a, b) => {
+            const storeNameComparison = a.storeName.localeCompare(b.storeName);
+            if (storeNameComparison !== 0) return storeNameComparison;
+            return a.customerName.localeCompare(b.customerName);
+          });
+      }
+      
+      return sortedCustomers;
     }
 
     // Helper function to parse CSV string into array
@@ -2123,7 +2407,7 @@
               const finalTotal = orderTotal - returnTotal;
               
               return `
-                <div class="receipt-item" onclick="toggleReceiptExpansion(${index})">
+                <div class="receipt-item" data-receipt-index="${index}">
                   <div class="receipt-header">
                     <span class="receipt-date">Receipt #${index + 1} - ${formatDate(receipt.date)}</span>
                     <span class="receipt-amount ${finalTotal < 0 ? 'negative' : ''}">₱${finalTotal.toFixed(2)}</span>
@@ -2208,6 +2492,17 @@
         
         // Show modal
         document.getElementById('receiptModal').style.display = 'flex';
+        
+        // Add event listeners to receipt items
+        const receiptItems = document.querySelectorAll('.receipt-item');
+        receiptItems.forEach(item => {
+          item.addEventListener('click', function() {
+            const receiptIndex = this.getAttribute('data-receipt-index');
+            if (receiptIndex !== null) {
+              toggleReceiptExpansion(parseInt(receiptIndex));
+            }
+          });
+        });
         
       } catch (error) {
         console.error("Error showing customer receipts:", error);

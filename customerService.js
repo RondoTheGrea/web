@@ -205,18 +205,35 @@ export class CustomerService {
                 const newReceipts = await this.fetchReceiptsAfterDate(lastProcessedDate, progressCallback);
                 
                 if (newReceipts.length > 0) {
+                    // Remove duplicates by ID before combining
+                    const existingIds = new Set(localReceipts.map(r => r.$id));
+                    const uniqueNewReceipts = newReceipts.filter(r => !existingIds.has(r.$id));
+                    
+                    if (uniqueNewReceipts.length === 0) {
+                        progressCallback("No truly new receipts found. Using existing data.", localReceipts.length);
+                        // Update metadata to prevent future unnecessary checks
+                        const latestLocalReceipt = localReceipts.reduce((latest, current) => 
+                            new Date(current.date) > new Date(latest.date) ? current : latest
+                        );
+                        await this.storeMetadata('lastProcessedReceiptId', latestLocalReceipt.$id);
+                        await this.storeMetadata('lastProcessedDate', latestLocalReceipt.date);
+                        return localReceipts;
+                    }
+                    
                     // Combine existing and new receipts
-                    const allReceipts = [...localReceipts, ...newReceipts];
+                    const allReceipts = [...localReceipts, ...uniqueNewReceipts];
                     
                     // Store new receipts in IndexedDB
-                    await this.storeReceiptsInIndexedDB(newReceipts);
+                    await this.storeReceiptsInIndexedDB(uniqueNewReceipts);
                     
                     // Update metadata with latest receipt info
-                    const latestReceipt = newReceipts[newReceipts.length - 1];
+                    const latestReceipt = allReceipts.reduce((latest, current) => 
+                        new Date(current.date) > new Date(latest.date) ? current : latest
+                    );
                     await this.storeMetadata('lastProcessedReceiptId', latestReceipt.$id);
                     await this.storeMetadata('lastProcessedDate', latestReceipt.date);
                     
-                    progressCallback(`Successfully fetched ${newReceipts.length} new receipts and updated local storage!`, allReceipts.length);
+                    progressCallback(`Successfully fetched ${uniqueNewReceipts.length} new receipts and updated local storage!`, allReceipts.length);
                     return allReceipts;
                 } else {
                     progressCallback("No new receipts found. Using existing data.", localReceipts.length);
@@ -226,7 +243,18 @@ export class CustomerService {
             
             // If no local data or first time, fetch everything
             progressCallback("No local data found, fetching all receipts...", 0);
-            return await this.fetchAllReceipts(progressCallback);
+            const allReceipts = await this.fetchAllReceipts(progressCallback);
+            
+            // Store metadata after first fetch
+            if (allReceipts.length > 0) {
+                const latestReceipt = allReceipts.reduce((latest, current) => 
+                    new Date(current.date) > new Date(latest.date) ? current : latest
+                );
+                await this.storeMetadata('lastProcessedReceiptId', latestReceipt.$id);
+                await this.storeMetadata('lastProcessedDate', latestReceipt.date);
+            }
+            
+            return allReceipts;
             
         } catch (error) {
             console.error("Error in incremental fetch:", error);
@@ -244,13 +272,17 @@ export class CustomerService {
             const limit = 100;
             let totalFetched = 0;
             
+            // Add a small buffer to the date to avoid missing receipts due to timezone issues
+            const adjustedDate = new Date(date);
+            adjustedDate.setSeconds(adjustedDate.getSeconds() - 1);
+            
             while (true) {
                 try {
                     const response = await customerDatabases.listDocuments(
                         this.databaseId,
                         this.collectionId,
                         [
-                            Appwrite.Query.greaterThan("date", date),
+                            Appwrite.Query.greaterThan("date", adjustedDate.toISOString()),
                             Appwrite.Query.orderAsc("date"),
                             Appwrite.Query.limit(limit),
                             Appwrite.Query.offset(offset)
@@ -259,8 +291,15 @@ export class CustomerService {
                     
                     if (response.documents.length === 0) break;
                     
-                    allNewReceipts = allNewReceipts.concat(response.documents);
-                    totalFetched += response.documents.length;
+                    // Filter out receipts that might have the exact same date as our last processed date
+                    const filteredReceipts = response.documents.filter(receipt => {
+                        const receiptDate = new Date(receipt.date);
+                        const lastDate = new Date(date);
+                        return receiptDate > lastDate;
+                    });
+                    
+                    allNewReceipts = allNewReceipts.concat(filteredReceipts);
+                    totalFetched += filteredReceipts.length;
                     
                     progressCallback(`Fetched ${totalFetched} new receipts...`, totalFetched);
                     
@@ -409,12 +448,26 @@ export class CustomerService {
                 this.localCustomers = storedCustomers;
                 progressCallback(`Loaded ${this.localCustomers.length} customers from local storage`, this.localCustomers.length);
                 
-                // Check for new receipts without re-fetching everything
-                const newReceipts = await this.fetchNewReceiptsOnly(progressCallback);
-                if (newReceipts.length !== storedReceipts.length) {
-                    // We have new receipts, reprocess customers
-                    this.localReceipts = newReceipts;
-                    return await this.processReceiptsToCustomers(newReceipts);
+                // Check if we need to refresh data (only if it's been more than 1 hour)
+                const lastRefreshTime = await this.getMetadata('lastRefreshTime');
+                const now = Date.now();
+                const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+                
+                if (!lastRefreshTime || (now - lastRefreshTime) > oneHour) {
+                    progressCallback("Checking for new receipts...", 0);
+                    const newReceipts = await this.fetchNewReceiptsOnly(progressCallback);
+                    
+                    if (newReceipts.length !== storedReceipts.length) {
+                        // We have new receipts, reprocess customers
+                        this.localReceipts = newReceipts;
+                        await this.storeMetadata('lastRefreshTime', now);
+                        return await this.processReceiptsToCustomers(newReceipts);
+                    } else {
+                        // No new receipts, update refresh time to prevent unnecessary checks
+                        await this.storeMetadata('lastRefreshTime', now);
+                    }
+                } else {
+                    progressCallback(`Using cached data (last refreshed ${Math.round((now - lastRefreshTime) / 60000)} minutes ago)`, this.localCustomers.length);
                 }
                 
                 return this.localCustomers;
@@ -427,6 +480,10 @@ export class CustomerService {
         // Fetch from server if not in local storage
         progressCallback("No local data found, fetching from server...", 0);
         const receipts = await this.fetchNewReceiptsOnly(progressCallback);
+        
+        // Store refresh time after first fetch
+        await this.storeMetadata('lastRefreshTime', Date.now());
+        
         return await this.processReceiptsToCustomers(receipts);
     }
 
@@ -448,9 +505,25 @@ export class CustomerService {
         // Clear metadata to force full refresh
         await this.storeMetadata('lastProcessedReceiptId', null);
         await this.storeMetadata('lastProcessedDate', null);
+        await this.storeMetadata('lastRefreshTime', null);
         
         // Fetch everything fresh
         const receipts = await this.fetchAllReceipts(progressCallback);
         return await this.processReceiptsToCustomers(receipts);
+    }
+    
+    // Check if data refresh is needed
+    async isRefreshNeeded() {
+        try {
+            const lastRefreshTime = await this.getMetadata('lastRefreshTime');
+            if (!lastRefreshTime) return true;
+            
+            const now = Date.now();
+            const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+            return (now - lastRefreshTime) > oneHour;
+        } catch (error) {
+            console.error("Error checking refresh status:", error);
+            return true; // Default to refresh if we can't check
+        }
     }
 }
