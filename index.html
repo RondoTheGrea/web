@@ -200,7 +200,7 @@
     }
     .custom-dropdown .dropdown-item { padding: 8px 12px; cursor: pointer; white-space: nowrap; }
     .custom-dropdown .dropdown-item:hover { background: #f3f4f6; }
-    .custom-dropdown .dropdown-separator { padding: 0; margin: 4px 0; border: 0; border-top: 1px solid #e5e7eb; }
+    .custom-dropdown .dropdown-separator { padding: 0; margin: 4px 0; border: 0; border-top: 5px solid #000000; }
     .custom-dropdown .dropdown-load-more { font-weight: 700; color: #265DAB; }
 
     /* Add these new styles */
@@ -1249,7 +1249,13 @@
           showStatus("No dates found. Try using Sample Data button.", true);
           const today = new Date().toISOString().split('T')[0];
           const formattedToday = formatDateForDisplay(today);
-          dateSelect.innerHTML = `<option value="">Select a date</option><option value="${today}">${formattedToday} (Today)</option>`;
+          // Seed with today so dropdown works initially
+          allAvailableDates = [today];
+          currentDateOffset = 0;
+          // Reset and populate both native and custom dropdowns
+          dateSelect.innerHTML = '<option value="">Select a date</option>';
+          dateDropdownMenu.innerHTML = '';
+          populateDateDropdown();
         } else {
           console.log(`Found ${allAvailableDates.length} dates, populating select element`);
           populateDateDropdown();
@@ -1265,8 +1271,12 @@
         });
         showStatus(`Error fetching dates: ${error.message}`, true);
         const today = new Date().toISOString().split('T')[0];
-        const formattedToday = formatDateForDisplay(today);
-        dateSelect.innerHTML = `<option value="">Select a date</option><option value="${today}">${formattedToday} (Today)</option>`;
+        // Seed with today on error to keep dropdown usable
+        allAvailableDates = [today];
+        currentDateOffset = 0;
+        dateSelect.innerHTML = '<option value="">Select a date</option>';
+        dateDropdownMenu.innerHTML = '';
+        populateDateDropdown();
       }
     }
 
