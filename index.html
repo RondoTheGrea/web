@@ -189,6 +189,20 @@
       word-break: break-word;
     }
 
+    /* Custom dropdown styles */
+    .custom-dropdown { position: relative; display: inline-block; }
+    .custom-dropdown .dropdown-toggle {
+      padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: #fff; cursor: pointer; white-space: nowrap;
+    }
+    .custom-dropdown .dropdown-menu {
+      position: absolute; top: 100%; left: 0; z-index: 50; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08); max-height: 260px; overflow-y: auto; width: max-content; min-width: 0; margin-top: 6px; white-space: nowrap;
+    }
+    .custom-dropdown .dropdown-item { padding: 8px 12px; cursor: pointer; white-space: nowrap; }
+    .custom-dropdown .dropdown-item:hover { background: #f3f4f6; }
+    .custom-dropdown .dropdown-separator { padding: 0; margin: 4px 0; border: 0; border-top: 1px solid #e5e7eb; }
+    .custom-dropdown .dropdown-load-more { font-weight: 700; color: #265DAB; }
+
     /* Add these new styles */
     select {
       max-height: 200px;
@@ -898,7 +912,11 @@
     <div class="selection-step">
       <span class="step-number">1</span>
       <label for="dateSelect">Select a date:</label>
-      <select id="dateSelect"></select>
+      <select id="dateSelect" style="display:none;"></select>
+      <div class="custom-dropdown" id="dateDropdown">
+        <button type="button" class="dropdown-toggle" id="dateDropdownButton">Select a date</button>
+        <div class="dropdown-menu" id="dateDropdownMenu" style="display:none;"></div>
+      </div>
     </div>
     
     <div class="selection-step" id="userIdStep" style="display: none;">
@@ -1008,6 +1026,9 @@
 
     // Elements
     const dateSelect = document.getElementById('dateSelect');
+    const dateDropdown = document.getElementById('dateDropdown');
+    const dateDropdownBtn = document.getElementById('dateDropdownButton');
+    const dateDropdownMenu = document.getElementById('dateDropdownMenu');
     const userIdSelect = document.getElementById('userIdSelect');
     const userIdStep = document.getElementById('userIdStep');
     const csvContent = document.getElementById('csvContent');
@@ -1166,6 +1187,12 @@
     let allAvailableDates = [];
     let currentDateOffset = 0;
     const datesPerPage = 10;
+    // Server-side pagination trackers
+    let csvPageOffset = 0;
+    let salesPageOffset = 0;
+    const fetchBatchLimit = 100;
+    let csvHasMore = false;
+    let salesHasMore = false;
 
     async function getAvailableDates() {
       showStatus("Fetching available dates...");
@@ -1173,18 +1200,26 @@
       try {
         console.log("Starting date fetch process...");
         
+        // Reset server-side pagination trackers
+        csvPageOffset = 0;
+        salesPageOffset = 0;
+        csvHasMore = false;
+        salesHasMore = false;
+
         // Fetch documents with a reasonable limit
         console.log("Fetching CSV documents...");
         const csvDocs = await databases.listDocuments(databaseId, csvCollection, [
           Appwrite.Query.orderDesc("date"),
-          Appwrite.Query.limit(100)
+          Appwrite.Query.limit(fetchBatchLimit),
+          Appwrite.Query.offset(csvPageOffset)
         ]);
         console.log("CSV documents received:", csvDocs);
         
         console.log("Fetching Sales documents...");
         const salesDocs = await databases.listDocuments(databaseId, salesCollection, [
           Appwrite.Query.orderDesc("date"),
-          Appwrite.Query.limit(100)
+          Appwrite.Query.limit(fetchBatchLimit),
+          Appwrite.Query.offset(salesPageOffset)
         ]);
         console.log("Sales documents received:", salesDocs);
         
@@ -1202,8 +1237,12 @@
         allAvailableDates.sort((a, b) => new Date(b) - new Date(a));
         console.log("All unique dates after sorting:", allAvailableDates);
         
-        // Reset pagination
+        // Reset pagination and initialize server-side pagination trackers
         currentDateOffset = 0;
+        csvPageOffset += csvDocs.documents.length;
+        salesPageOffset += salesDocs.documents.length;
+        csvHasMore = csvDocs.documents.length === fetchBatchLimit;
+        salesHasMore = salesDocs.documents.length === fetchBatchLimit;
         
         if (allAvailableDates.length === 0) {
           console.log("No dates found in any documents");
@@ -1237,35 +1276,124 @@
       const endIndex = Math.min(startIndex + datesPerPage, allAvailableDates.length);
       const datesToShow = allAvailableDates.slice(startIndex, endIndex);
       
-      // Clear existing options except the first one
+      // Clear existing options for initial load only
       if (currentDateOffset === 0) {
         dateSelect.innerHTML = '<option value="">Select a date</option>';
+        dateDropdownBtn.textContent = 'Select a date';
+        dateDropdownMenu.innerHTML = '';
       }
-      
-      // Add date options
-      datesToShow.forEach(date => {
+
+      // Rebuild menu without closing it
+      // Remove existing Load More entry only; keep existing separators in place
+      const existingLoadMoreEl = dateDropdownMenu.querySelector('.dropdown-load-more');
+      if (existingLoadMoreEl) existingLoadMoreEl.remove();
+
+      // Append the next page of dates to native select and custom menu
+      datesToShow.forEach((date, idx) => {
         const formattedDate = formatDateForDisplay(date);
         const option = document.createElement('option');
         option.value = date;
         option.textContent = formattedDate;
         dateSelect.appendChild(option);
+
+        const item = document.createElement('div');
+        item.className = 'dropdown-item';
+        item.textContent = formattedDate;
+        item.dataset.value = date;
+        item.addEventListener('click', () => {
+          dateSelect.value = date;
+          dateDropdownBtn.textContent = formattedDate;
+          // Trigger change for downstream logic
+          dateSelect.dispatchEvent(new Event('change'));
+          // Keep menu open only if user clicked Load More; for date selection, close it
+          dateDropdownMenu.style.display = 'none';
+        });
+        dateDropdownMenu.appendChild(item);
       });
-      
-      // Add "Load More" option if there are more dates
-      if (endIndex < allAvailableDates.length) {
-        const loadMoreOption = document.createElement('option');
-        loadMoreOption.value = 'load_more';
-        loadMoreOption.textContent = 'Load More';
-        loadMoreOption.style.fontWeight = 'bold';
-        loadMoreOption.style.color = '#265DAB';
-        dateSelect.appendChild(loadMoreOption);
+
+      // Insert a separator after each 10-date batch if more dates follow
+      const needSeparator = endIndex < allAvailableDates.length;
+      if (needSeparator) {
+        const sep = document.createElement('hr');
+        sep.className = 'dropdown-separator';
+        dateDropdownMenu.appendChild(sep);
+      }
+
+      // Append a single Load More item if more dates remain locally or on the server
+      if (endIndex < allAvailableDates.length || csvHasMore || salesHasMore) {
+        const loadMoreEl = document.createElement('div');
+        loadMoreEl.className = 'dropdown-item dropdown-load-more';
+        loadMoreEl.textContent = 'Load More';
+        loadMoreEl.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await loadMoreDates();
+          // Keep menu open after loading more
+          dateDropdownMenu.style.display = 'block';
+        });
+        dateDropdownMenu.appendChild(loadMoreEl);
       }
     }
 
     // Function to load more dates
-    function loadMoreDates() {
-      currentDateOffset += datesPerPage;
+    async function loadMoreDates() {
+      const nextOffset = currentDateOffset + datesPerPage;
+      // If we need more than we currently have locally, try to fetch more pages from server
+      while (nextOffset > allAvailableDates.length && (csvHasMore || salesHasMore)) {
+        await fetchMoreDatesFromServer();
+      }
+      currentDateOffset = Math.min(nextOffset, allAvailableDates.length);
       populateDateDropdown();
+      // Keep custom dropdown open
+      dateDropdownMenu.style.display = 'block';
+    }
+
+    // Fetch additional dates from server in batches and append uniquely
+    async function fetchMoreDatesFromServer() {
+      try {
+        showStatus("Loading more dates...");
+        const promises = [];
+        if (csvHasMore) {
+          promises.push(databases.listDocuments(databaseId, csvCollection, [
+            Appwrite.Query.orderDesc('date'),
+            Appwrite.Query.limit(fetchBatchLimit),
+            Appwrite.Query.offset(csvPageOffset)
+          ]));
+        } else {
+          promises.push(Promise.resolve(null));
+        }
+        if (salesHasMore) {
+          promises.push(databases.listDocuments(databaseId, salesCollection, [
+            Appwrite.Query.orderDesc('date'),
+            Appwrite.Query.limit(fetchBatchLimit),
+            Appwrite.Query.offset(salesPageOffset)
+          ]));
+        } else {
+          promises.push(Promise.resolve(null));
+        }
+
+        const [csvRes, salesRes] = await Promise.all(promises);
+        const newCsvDates = csvRes ? csvRes.documents.map(doc => doc.date) : [];
+        const newSalesDates = salesRes ? salesRes.documents.map(doc => doc.date) : [];
+
+        if (csvRes) {
+          csvPageOffset += csvRes.documents.length;
+          csvHasMore = csvRes.documents.length === fetchBatchLimit;
+        }
+        if (salesRes) {
+          salesPageOffset += salesRes.documents.length;
+          salesHasMore = salesRes.documents.length === fetchBatchLimit;
+        }
+
+        // Merge, dedupe, sort desc
+        allAvailableDates = [...new Set([...allAvailableDates, ...newCsvDates, ...newSalesDates])];
+        allAvailableDates.sort((a, b) => new Date(b) - new Date(a));
+        showStatus("More dates loaded");
+      } catch (error) {
+        console.error('Error loading more dates:', error);
+        showStatus(`Error loading more dates: ${error.message}`, true);
+        csvHasMore = false;
+        salesHasMore = false;
+      }
     }
 
     // New function to fetch users for a selected date
@@ -1450,6 +1578,19 @@
       window.currentExpensesData = expensesData;
     }
 
+    // Toggle custom dropdown
+    dateDropdownBtn.addEventListener('click', () => {
+      const isOpen = dateDropdownMenu.style.display === 'block';
+      dateDropdownMenu.style.display = isOpen ? 'none' : 'block';
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!dateDropdown.contains(e.target)) {
+        dateDropdownMenu.style.display = 'none';
+      }
+    });
+
     // Add event listener to date select to fetch users when date changes
     dateSelect.addEventListener("change", () => {
       const selectedDate = dateSelect.value;
@@ -1457,8 +1598,6 @@
       // Handle "Load More" option
       if (selectedDate === 'load_more') {
         loadMoreDates();
-        // Reset selection to empty
-        dateSelect.value = '';
         return;
       }
       
@@ -2355,14 +2494,48 @@
       if (!csvString || csvString.trim() === '') return [];
       
       try {
+        const sanitizeNumber = (value) => {
+          if (value === undefined || value === null) return 0;
+          const cleaned = String(value).replace(/₱/g, '').replace(/,/g, '').trim();
+          const num = parseFloat(cleaned);
+          return isNaN(num) ? 0 : num;
+        };
+
         // Split by lines and then by commas
         const lines = csvString.trim().split('\n');
         return lines.map(line => {
           const parts = line.split(',').map(part => part.trim());
+          const itemName = parts[0] || '';
+          const amountStr = parts[1];
+          const priceStr = parts[2];
+          // CSV structures we support:
+          // 1) item,amount,price,total  -> use total (index 3) and ignore price
+          // 2) item,amount,total        -> legacy, third value is total
+          // 3) item,amount,price        -> compute total = amount * price
+          // 4) item,amount              -> total = 0
+          let totalValue = 0;
+          if (parts.length >= 4) {
+            totalValue = sanitizeNumber(parts[3]);
+            if (totalValue === 0) {
+              // Fallback to compute if provided total is empty/zero but price exists
+              totalValue = sanitizeNumber(amountStr) * sanitizeNumber(priceStr);
+            }
+          } else if (parts.length === 3) {
+            // If length is 3, decide whether 3rd is price or total by checking names not possible here
+            // Prefer treating 3rd column as total when it's clearly an amount
+            const maybeTotal = sanitizeNumber(parts[2]);
+            const qty = sanitizeNumber(amountStr);
+            const price = sanitizeNumber(priceStr);
+            // Heuristic: if qty*price equals maybeTotal (or price looks like unit price), keep maybeTotal; else compute
+            const computed = qty * price;
+            totalValue = (computed > 0 && Math.abs(computed - maybeTotal) < 0.005) ? maybeTotal : (price > 0 ? computed : maybeTotal);
+          } else if (parts.length === 2) {
+            totalValue = 0;
+          }
           return {
-            item: parts[0] || '',
-            quantity: parts[1] || '0',
-            total: parts[2] || '0.00'
+            item: itemName,
+            quantity: (amountStr ?? '0'),
+            total: totalValue
           };
         });
       } catch (error) {
